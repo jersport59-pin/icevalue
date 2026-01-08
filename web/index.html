@@ -57,6 +57,11 @@
   <p style="text-align:center;">
     Valeur estimée des cartes de hockey<br>
     Estimated hockey card values
+    <input id="q" placeholder="Ex: Connor McDavid Young Guns PSA 10"
+  style="width:100%;padding:12px;border-radius:8px;border:1px solid #ccc;margin:12px 0;" />
+
+<button onclick="searchCard()">Rechercher / Search</button>
+
   </p>
 
   <button onclick="checkApi()">Tester la connexion à l’API</button>
@@ -65,7 +70,43 @@
 </div>
 
 <script>
+  function checkApi() <script>
   function checkApi() {
+    const resultEl = document.getElementById("result");
+    resultEl.innerText = "Connexion en cours...";
+
+    fetch("https://TON-URL-RENDER.onrender.com/")
+      .then(async (res) => {
+        const text = await res.text();
+        resultEl.innerText = "Réponse API:\n\n" + text;
+      })
+      .catch((err) => {
+        resultEl.innerText = "Erreur: " + (err?.message || "connexion impossible");
+      });
+  }
+
+  function searchCard() {
+    const q = document.getElementById("q").value.trim();
+    const resultEl = document.getElementById("result");
+
+    if (!q) {
+      resultEl.innerText = "Entre un nom de carte / Enter a card name";
+      return;
+    }
+
+    resultEl.innerText = "Recherche en cours... / Searching...";
+
+    fetch("https://icevalue-api.onrender.com/search?q=" + encodeURIComponent(q))
+      .then(res => res.json())
+      .then(data => {
+        resultEl.innerText = JSON.stringify(data, null, 2);
+      })
+      .catch(err => {
+        resultEl.innerText = "Erreur: " + (err?.message || "connexion impossible");
+      });
+  }
+</script>
+{
     const resultEl = document.getElementById("result");
     resultEl.innerText = "Connexion en cours...";
 
