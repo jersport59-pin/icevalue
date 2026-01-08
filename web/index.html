@@ -69,7 +69,7 @@
     const resultEl = document.getElementById("result");
     resultEl.innerText = "Connexion en cours...";
 
-    fetch("https://TON-URL-RENDER.onrender.com/")
+    fetch("https://icevalue-api.onrender.com/")
       .then(async (res) => {
         const text = await res.text();
         resultEl.innerText = "Réponse API:\n\n" + text;
