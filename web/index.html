@@ -66,18 +66,20 @@
 
 <script>
   function checkApi() {
-    fetch(fetch("https://icevalue-api.onrender.com")
-      .then(res => res.json())
-      .then(data => {
-        document.getElementById("result").innerText =
-          JSON.stringify(data, null, 2);
+    const resultEl = document.getElementById("result");
+    resultEl.innerText = "Connexion en cours...";
+
+    fetch("https://TON-URL-RENDER.onrender.com/")
+      .then(async (res) => {
+        const text = await res.text();
+        resultEl.innerText = "Réponse API:\n\n" + text;
       })
-      .catch(() => {
-        document.getElementById("result").innerText =
-          "Erreur de connexion à l’API";
+      .catch((err) => {
+        resultEl.innerText = "Erreur: " + (err?.message || "connexion impossible");
       });
   }
 </script>
+
 
 </body>
 </html>
