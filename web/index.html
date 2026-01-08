@@ -123,4 +123,41 @@
 
 
 </body>
+  <script>
+  function checkApi() {
+    const resultEl = document.getElementById("result");
+    resultEl.innerText = "Connexion en cours...";
+
+    fetch("https://icevalue-api.onrender.com/")
+      .then(async (res) => {
+        const text = await res.text();
+        resultEl.innerText = "Réponse API:\n\n" + text;
+      })
+      .catch((err) => {
+        resultEl.innerText = "Erreur: " + (err?.message || "connexion impossible");
+      });
+  }
+
+  function searchCard() {
+    const q = document.getElementById("q").value.trim();
+    const resultEl = document.getElementById("result");
+
+    if (!q) {
+      resultEl.innerText = "Entre un nom de carte / Enter a card name";
+      return;
+    }
+
+    resultEl.innerText = "Recherche en cours... / Searching...";
+
+    fetch("https://icevalue-api.onrender.com/search?q=" + encodeURIComponent(q))
+      .then(res => res.json())
+      .then(data => {
+        resultEl.innerText = JSON.stringify(data, null, 2);
+      })
+      .catch(err => {
+        resultEl.innerText = "Erreur: " + (err?.message || "connexion impossible");
+      });
+  }
+</script>
+
 </html>
