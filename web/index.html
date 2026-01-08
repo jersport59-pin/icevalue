@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>IceValue – Hockey Card Prices</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #0B3C5D;
+      color: white;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 600px;
+      margin: 60px auto;
+      background: white;
+      color: black;
+      padding: 30px;
+      border-radius: 12px;
+    }
+    h1 {
+      text-align: center;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #0B3C5D;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+    }
+    .result {
+      margin-top: 20px;
+      font-size: 14px;
+      background: #f0f0f0;
+      padding: 10px;
+      border-radius: 8px;
+    }
+    .lang {
+      text-align: center;
+      margin-bottom: 15px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="lang">
+    🇨🇦 Français / 🇺🇸 English
+  </div>
+
+  <h1>IceValue</h1>
+  <p style="text-align:center;">
+    Valeur estimée des cartes de hockey<br>
+    Estimated hockey card values
+  </p>
+
+  <button onclick="checkApi()">Tester la connexion à l’API</button>
+
+  <div id="result" class="result"></div>
+</div>
+
+<script>
+  function checkApi() {
+    fetch(fetch("https://icevalue-api.onrender.com")
+)
+      .then(res => res.json())
+      .then(data => {
+        document.getElementById("result").innerText =
+          JSON.stringify(data, null, 2);
+      })
+      .catch(() => {
+        document.getElementById("result").innerText =
+          "Erreur de connexion à l’API";
+      });
+  }
+</script>
+
+</body>
+</html>
