@@ -19,3 +19,14 @@ def home():
         "status": "online",
         "language": ["fr", "en"]
     }
+@app.get("/search")
+def search(q: str):
+    # Pour l’instant: réponse test (prochaine étape: eBay réel)
+    return {
+        "query": q,
+        "currency": "CAD",
+        "estimated_price": 123.45,
+        "source": "demo",
+        "note_fr": "Prix démo. Prochaine étape: ventes eBay réelles.",
+        "note_en": "Demo price. Next step: real eBay sold listings."
+    }
