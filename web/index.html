@@ -67,7 +67,6 @@
 <script>
   function checkApi() {
     fetch(fetch("https://icevalue-api.onrender.com")
-)
       .then(res => res.json())
       .then(data => {
         document.getElementById("result").innerText =
