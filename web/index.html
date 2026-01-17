@@ -92,6 +92,7 @@
       font-weight: 800;
       margin: 0 0 10px 0;
       font-size: 16px;
+      word-break: break-word;
     }
     .grid {
       display: grid;
@@ -128,7 +129,47 @@
       font-size: 12px;
       opacity: 0.7;
       line-height: 1.3;
+      word-break: break-word;
     }
+
+    .sectionTitle {
+      margin-top: 14px;
+      font-weight: 800;
+      color: #0B3C5D;
+      font-size: 13px;
+    }
+
+    .top5 {
+      margin-top: 8px;
+      display: grid;
+      gap: 10px;
+    }
+    .sale {
+      background: #ffffff;
+      border: 1px solid #e6e6e6;
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .saleTitle {
+      font-weight: 800;
+      font-size: 13px;
+      margin-bottom: 6px;
+      line-height: 1.25;
+    }
+    .saleMeta {
+      font-size: 12px;
+      opacity: 0.8;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .saleMeta a {
+      color: #0B3C5D;
+      font-weight: 800;
+      text-decoration: underline;
+    }
+
     .mono {
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       white-space: pre-wrap;
@@ -190,6 +231,9 @@
 
       <div class="footer" id="source"></div>
 
+      <div class="sectionTitle">Top 5 ventes utilisées / Top 5 sales used</div>
+      <div id="top5" class="top5"></div>
+
       <span class="toggle" onclick="toggleRaw()">Afficher/Hide raw JSON</span>
       <div id="raw" class="mono"></div>
     </div>
@@ -203,6 +247,15 @@
     function moneyCAD(n) {
       if (typeof n !== "number") return "$—";
       return "$" + n.toFixed(2) + " CAD";
+    }
+
+    function escapeHtml(s) {
+      return (s || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
     }
 
     function setStatus(msg) {
@@ -222,6 +275,32 @@
       raw.style.display = (raw.style.display === "none" || raw.style.display === "") ? "block" : "none";
     }
 
+    function renderTop5(topSales) {
+      const top5El = document.getElementById("top5");
+      if (!Array.isArray(topSales) || topSales.length === 0) {
+        top5El.innerHTML = `<div class="sale"><div class="saleTitle">Aucune vente à afficher / No sales to display</div></div>`;
+        return;
+      }
+
+      top5El.innerHTML = topSales.map((s, i) => {
+        const title = escapeHtml(s.title || "");
+        const url = s.url ? escapeHtml(s.url) : "";
+        const priceCad = typeof s.price_cad === "number" ? moneyCAD(s.price_cad) : "$—";
+        const priceUsd = (typeof s.price_usd === "number") ? (s.price_usd.toFixed(2) + " USD") : "— USD";
+        const link = url ? `<a href="${url}" target="_blank" rel="noopener noreferrer">Voir / View</a>` : "";
+
+        return `
+          <div class="sale">
+            <div class="saleTitle">${i+1}. ${title}</div>
+            <div class="saleMeta">
+              <div><b>${priceCad}</b> <span style="opacity:0.75;">( ${priceUsd} )</span></div>
+              <div>${link}</div>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
     function checkApi() {
       setStatus("Connexion API... / Checking API...");
       fetch(API_BASE + "/")
@@ -236,6 +315,7 @@
           document.getElementById("fx").innerText = "";
           document.getElementById("source").innerText = JSON.stringify(data);
           document.getElementById("raw").innerText = JSON.stringify(data, null, 2);
+          renderTop5([]);
         })
         .catch(err => {
           setStatus("❌ Erreur API: " + (err?.message || "connexion impossible"));
@@ -261,21 +341,23 @@
           if (data.error) {
             document.getElementById("median").innerText = "—";
             document.getElementById("avg").innerText = "—";
-            document.getElementById("sales").innerText = data.note_fr + " / " + data.note_en;
+            document.getElementById("sales").innerText = (data.note_fr || "") + " / " + (data.note_en || "");
             document.getElementById("fx").innerText = "";
             document.getElementById("source").innerText = "";
             document.getElementById("raw").innerText = JSON.stringify(data, null, 2);
+            renderTop5(data.top_sales || []);
             setStatus("⚠️ " + (data.note_fr || "Erreur"));
             return;
           }
 
           document.getElementById("median").innerText = moneyCAD(data.median_price_cad);
           document.getElementById("avg").innerText = moneyCAD(data.average_price_cad);
-          document.getElementById("sales").innerText = "Ventes utilisées / Sales used: " + data.sales_used;
+          document.getElementById("sales").innerText = "Ventes utilisées / Sales used: " + (data.sales_used ?? "—");
           document.getElementById("fx").innerText = "USD→CAD: " + (data.usd_to_cad ?? "—");
           document.getElementById("source").innerText = "Source: " + (data.source || "—");
           document.getElementById("raw").innerText = JSON.stringify(data, null, 2);
 
+          renderTop5(data.top_sales || []);
           setStatus("✅ Terminé");
         })
         .catch(err => {
