@@ -3,6 +3,7 @@ import time
 import re
 import requests
 import statistics
+from datetime import datetime
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -55,6 +56,19 @@ TEAM_KEYWORDS = [
 ]
 
 
+def parse_ebay_date(s: str):
+    """
+    eBay renvoie souvent une date ISO (ex: 2025-01-10T18:22:00.000Z).
+    On la convertit en datetime aware.
+    """
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except:
+        return None
+
+
 def get_usd_cad_rate():
     now = time.time()
     if _FX_CACHE["rate"] and (now - _FX_CACHE["ts"] < _FX_TTL_SECONDS):
@@ -94,6 +108,7 @@ def fetch_sold_items(query, token, marketplace_id="EBAY_CA", category_id=None):
     params = {
         "q": query,
         "limit": 50,
+        # On inclut enchères et prix fixe, tant que c'est SOLD:
         "filter": "soldItemsOnly:true,buyingOptions:{FIXED_PRICE|AUCTION}",
     }
     if category_id:
@@ -189,7 +204,7 @@ def simplify_query(q: str, max_words: int = 7) -> str:
     q = q.replace("buer", "upper")
     q = q.replace("upp er", "upper")
 
-    # Cas fréquent: LANE lu LIVE (spécifique pour éviter des faux positifs)
+    # Cas fréquent: LANE lu LIVE
     if "live" in q and ("hutson" in q or "canadiens" in q):
         q = q.replace("live", "lane")
 
@@ -232,7 +247,7 @@ def simplify_query(q: str, max_words: int = 7) -> str:
             team_found = t
             break
 
-    # Si on voit "hutson", on force "lane hutson" (aide l'OCR)
+    # Si on voit "hutson", on force "lane hutson"
     if "hutson" in unique and "lane" not in unique:
         unique = ["lane"] + unique
 
@@ -258,20 +273,17 @@ def build_suggested_query_clean(ocr_text: str) -> tuple[str, dict]:
     sets = extract_keywords(t, SET_KEYWORDS)
     inserts = extract_keywords(t, INSERT_KEYWORDS)
 
-    # base courte (souvent joueur + équipe)
     base = simplify_query(t, max_words=7)
 
     parts = []
     if year:
         parts.append(year)
 
-    # set: 1-2 max
     if sets:
         parts.append(sets[0])
         if len(sets) > 1 and sets[1] not in sets[0]:
             parts.append(sets[1])
 
-    # insert: 1-2 max
     if inserts:
         parts.append(inserts[0])
         if len(inserts) > 1 and inserts[1] not in inserts[0]:
@@ -338,7 +350,6 @@ async def photo_to_query(file: UploadFile = File(...)):
         return {"error": "Empty file"}
 
     text = ocr_space_extract_text(content, file.filename or "card.jpg")
-
     clean, meta = build_suggested_query_clean(text)
     full = build_suggested_query_full(text)
 
@@ -420,7 +431,17 @@ def search(q: str):
             price_cad = price
 
         url = item.get("itemWebUrl") or item.get("itemHref") or ""
-        sales.append({"title": title_text, "price_cad": price_cad, "price_usd": price_usd, "url": url})
+
+        # Date de fin (sold). Selon eBay, ça peut varier; on fallback.
+        end_date = item.get("itemEndDate") or item.get("itemCreationDate") or item.get("lastUpdatedDate") or ""
+
+        sales.append({
+            "title": title_text,
+            "price_cad": price_cad,
+            "price_usd": price_usd,
+            "url": url,
+            "end_date": end_date
+        })
         prices_cad.append(price_cad)
 
     # ------------------------------------------------------
@@ -429,7 +450,7 @@ def search(q: str):
     q_upper = (q or "").upper()
     keep_sales = sales
 
-    # 1) Filtre Young Guns
+    # 1) Filtre Young Guns (si la requête le demande)
     if "YOUNG GUNS" in q_upper or " YG" in q_upper or "YG " in q_upper or q_upper.strip() == "YG":
         yg_filtered = []
         for s in sales:
@@ -471,6 +492,7 @@ def search(q: str):
     prices_cad.sort()
     used_prices_cad = prices_cad[1:-1] if len(prices_cad) > 6 else prices_cad[:]
 
+    # Garde seulement les ventes qui correspondent aux prix utilisés (comme avant)
     remaining = used_prices_cad.copy()
     filtered_sales = []
     for s in sales:
@@ -480,7 +502,11 @@ def search(q: str):
                 remaining.remove(rp)
                 break
 
-    filtered_sales.sort(key=lambda x: x["price_cad"], reverse=True)
+    # ✅ Top5 = les PLUS RÉCENTES (last sold)
+    filtered_sales.sort(
+        key=lambda x: (parse_ebay_date(x.get("end_date")) is not None, parse_ebay_date(x.get("end_date"))),
+        reverse=True
+    )
     top5 = filtered_sales[:5]
 
     return {
@@ -498,6 +524,7 @@ def search(q: str):
                 "price_cad": round(s["price_cad"], 2),
                 "price_usd": (round(s["price_usd"], 2) if isinstance(s["price_usd"], (int, float)) else None),
                 "url": s["url"],
+                "end_date": s.get("end_date"),
             } for s in top5
         ],
         "debug": {"tried": tried},
