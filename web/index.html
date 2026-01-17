@@ -6,190 +6,34 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #0B3C5D;
-      color: white;
-      margin: 0;
-      padding: 0;
-    }
-    .container {
-      max-width: 720px;
-      margin: 50px auto;
-      background: white;
-      color: black;
-      padding: 26px;
-      border-radius: 14px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.15);
-    }
-    .topbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 12px;
-    }
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-weight: 800;
-      font-size: 20px;
-      letter-spacing: 0.3px;
-    }
-    .pill {
-      font-size: 12px;
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: #eef3f7;
-      color: #0B3C5D;
-      font-weight: 700;
-      white-space: nowrap;
-    }
-    .hint {
-      margin: 6px 0 16px 0;
-      opacity: 0.85;
-      line-height: 1.25;
-    }
-    input {
-      width: 100%;
-      padding: 12px;
-      border-radius: 10px;
-      border: 1px solid #ccc;
-      margin: 10px 0;
-      box-sizing: border-box;
-      font-size: 16px;
-    }
-    .row {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-top: 6px;
-    }
-    button {
-      flex: 1;
-      min-width: 220px;
-      padding: 12px;
-      background: #0B3C5D;
-      color: white;
-      border: none;
-      border-radius: 10px;
-      font-size: 16px;
-      cursor: pointer;
-    }
-    button.secondary {
-      background: #163d58;
-      opacity: 0.92;
-    }
-    .card {
-      margin-top: 16px;
-      background: #f6f7f8;
-      border-radius: 14px;
-      padding: 16px;
-      border: 1px solid #e6e6e6;
-    }
-    .qtitle {
-      font-weight: 800;
-      margin: 0 0 10px 0;
-      font-size: 16px;
-      word-break: break-word;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-    .metric {
-      background: white;
-      border-radius: 12px;
-      padding: 14px;
-      border: 1px solid #e6e6e6;
-    }
-    .label {
-      font-size: 12px;
-      opacity: 0.7;
-      margin-bottom: 6px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.6px;
-    }
-    .value {
-      font-size: 28px;
-      font-weight: 900;
-      color: #0B3C5D;
-      line-height: 1.05;
-    }
-    .sub {
-      margin-top: 6px;
-      font-size: 13px;
-      opacity: 0.75;
-    }
-    .footer {
-      margin-top: 12px;
-      font-size: 12px;
-      opacity: 0.7;
-      line-height: 1.3;
-      word-break: break-word;
-    }
-
-    .sectionTitle {
-      margin-top: 14px;
-      font-weight: 800;
-      color: #0B3C5D;
-      font-size: 13px;
-    }
-
-    .top5 {
-      margin-top: 8px;
-      display: grid;
-      gap: 10px;
-    }
-    .sale {
-      background: #ffffff;
-      border: 1px solid #e6e6e6;
-      border-radius: 12px;
-      padding: 12px;
-    }
-    .saleTitle {
-      font-weight: 800;
-      font-size: 13px;
-      margin-bottom: 6px;
-      line-height: 1.25;
-    }
-    .saleMeta {
-      font-size: 12px;
-      opacity: 0.8;
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-    .saleMeta a {
-      color: #0B3C5D;
-      font-weight: 800;
-      text-decoration: underline;
-    }
-
-    .mono {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      white-space: pre-wrap;
-      background: #fff;
-      border: 1px dashed #d7d7d7;
-      padding: 10px;
-      border-radius: 10px;
-      margin-top: 12px;
-      font-size: 12px;
-      color: #2b2b2b;
-      display: none;
-    }
-    .toggle {
-      margin-top: 10px;
-      font-size: 12px;
-      color: #0B3C5D;
-      cursor: pointer;
-      text-decoration: underline;
-      display: inline-block;
-    }
+    body { font-family: Arial, sans-serif; background:#0B3C5D; color:#fff; margin:0; padding:0; }
+    .container { max-width:720px; margin:50px auto; background:#fff; color:#000; padding:26px; border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,0.15); }
+    .topbar{ display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; }
+    .brand{ display:flex; align-items:center; gap:10px; font-weight:800; font-size:20px; letter-spacing:.3px; }
+    .pill{ font-size:12px; padding:6px 10px; border-radius:999px; background:#eef3f7; color:#0B3C5D; font-weight:700; white-space:nowrap; }
+    .hint{ margin:6px 0 16px 0; opacity:.85; line-height:1.25; }
+    input, .file { width:100%; padding:12px; border-radius:10px; border:1px solid #ccc; margin:10px 0; box-sizing:border-box; font-size:16px; }
+    .row{ display:flex; gap:10px; flex-wrap:wrap; margin-top:6px; }
+    button{ flex:1; min-width:220px; padding:12px; background:#0B3C5D; color:#fff; border:none; border-radius:10px; font-size:16px; cursor:pointer; }
+    button.secondary{ background:#163d58; opacity:.92; }
+    button.photo{ background:#0b5d3c; }
+    .card{ margin-top:16px; background:#f6f7f8; border-radius:14px; padding:16px; border:1px solid #e6e6e6; }
+    .qtitle{ font-weight:800; margin:0 0 10px 0; font-size:16px; word-break:break-word; }
+    .grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .metric{ background:#fff; border-radius:12px; padding:14px; border:1px solid #e6e6e6; }
+    .label{ font-size:12px; opacity:.7; margin-bottom:6px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; }
+    .value{ font-size:28px; font-weight:900; color:#0B3C5D; line-height:1.05; }
+    .sub{ margin-top:6px; font-size:13px; opacity:.75; }
+    .footer{ margin-top:12px; font-size:12px; opacity:.7; line-height:1.3; word-break:break-word; }
+    .sectionTitle{ margin-top:14px; font-weight:800; color:#0B3C5D; font-size:13px; }
+    .top5{ margin-top:8px; display:grid; gap:10px; }
+    .sale{ background:#fff; border:1px solid #e6e6e6; border-radius:12px; padding:12px; }
+    .saleTitle{ font-weight:800; font-size:13px; margin-bottom:6px; line-height:1.25; }
+    .saleMeta{ font-size:12px; opacity:.8; display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+    .saleMeta a{ color:#0B3C5D; font-weight:800; text-decoration:underline; }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; white-space:pre-wrap; background:#fff; border:1px dashed #d7d7d7; padding:10px; border-radius:10px; margin-top:12px; font-size:12px; color:#2b2b2b; display:none; }
+    .toggle{ margin-top:10px; font-size:12px; color:#0B3C5D; cursor:pointer; text-decoration:underline; display:inline-block; }
+    img.preview{ max-width:100%; border-radius:12px; border:1px solid #e6e6e6; margin-top:10px; display:none; }
   </style>
 </head>
 
@@ -201,14 +45,18 @@
     </div>
 
     <div class="hint">
-      <div><b>FR</b> : Estimation basée sur ventes eBay complétées.</div>
-      <div><b>EN</b> : Estimate based on completed eBay sold listings.</div>
+      <div><b>FR</b> : Tu peux chercher par texte ou envoyer une photo de la carte.</div>
+      <div><b>EN</b> : Search by text or upload a photo of the card.</div>
     </div>
 
     <input id="q" placeholder="Ex: Connor McDavid Young Guns PSA 10" />
 
+    <input class="file" id="photo" type="file" accept="image/*" />
+    <img id="preview" class="preview" alt="preview" />
+
     <div class="row">
       <button onclick="searchCard()">Rechercher / Search</button>
+      <button class="photo" onclick="analyzePhoto()">📷 Analyser Photo</button>
       <button class="secondary" onclick="checkApi()">Tester API</button>
     </div>
 
@@ -244,51 +92,25 @@
   <script>
     const API_BASE = "https://icevalue-api.onrender.com";
 
-    function moneyCAD(n) {
-      if (typeof n !== "number") return "$—";
-      return "$" + n.toFixed(2) + " CAD";
-    }
+    function moneyCAD(n){ if(typeof n!=="number") return "$—"; return "$"+n.toFixed(2)+" CAD"; }
+    function escapeHtml(s){ return (s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;"); }
+    function setStatus(msg){ document.getElementById("status").innerText = msg||""; }
+    function showCard(){ document.getElementById("card").style.display = "block"; }
+    function hideCard(){ document.getElementById("card").style.display = "none"; }
+    function toggleRaw(){ const raw=document.getElementById("raw"); raw.style.display=(raw.style.display==="none"||raw.style.display==="")?"block":"none"; }
 
-    function escapeHtml(s) {
-      return (s || "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-    }
-
-    function setStatus(msg) {
-      document.getElementById("status").innerText = msg || "";
-    }
-
-    function showCard() {
-      document.getElementById("card").style.display = "block";
-    }
-
-    function hideCard() {
-      document.getElementById("card").style.display = "none";
-    }
-
-    function toggleRaw() {
-      const raw = document.getElementById("raw");
-      raw.style.display = (raw.style.display === "none" || raw.style.display === "") ? "block" : "none";
-    }
-
-    function renderTop5(topSales) {
-      const top5El = document.getElementById("top5");
-      if (!Array.isArray(topSales) || topSales.length === 0) {
-        top5El.innerHTML = `<div class="sale"><div class="saleTitle">Aucune vente à afficher / No sales to display</div></div>`;
+    function renderTop5(topSales){
+      const top5El=document.getElementById("top5");
+      if(!Array.isArray(topSales) || topSales.length===0){
+        top5El.innerHTML = `<div class="sale"><div class="saleTitle">Aucune vente / No sales</div></div>`;
         return;
       }
-
-      top5El.innerHTML = topSales.map((s, i) => {
-        const title = escapeHtml(s.title || "");
-        const url = s.url ? escapeHtml(s.url) : "";
-        const priceCad = typeof s.price_cad === "number" ? moneyCAD(s.price_cad) : "$—";
-        const priceUsd = (typeof s.price_usd === "number") ? (s.price_usd.toFixed(2) + " USD") : "— USD";
-        const link = url ? `<a href="${url}" target="_blank" rel="noopener noreferrer">Voir / View</a>` : "";
-
+      top5El.innerHTML = topSales.map((s,i)=>{
+        const title=escapeHtml(s.title||"");
+        const url=s.url?escapeHtml(s.url):"";
+        const priceCad=(typeof s.price_cad==="number")?moneyCAD(s.price_cad):"$—";
+        const priceUsd=(typeof s.price_usd==="number")?(s.price_usd.toFixed(2)+" USD"):"— USD";
+        const link=url?`<a href="${url}" target="_blank" rel="noopener noreferrer">Voir / View</a>`:"";
         return `
           <div class="sale">
             <div class="saleTitle">${i+1}. ${title}</div>
@@ -296,73 +118,119 @@
               <div><b>${priceCad}</b> <span style="opacity:0.75;">( ${priceUsd} )</span></div>
               <div>${link}</div>
             </div>
-          </div>
-        `;
+          </div>`;
       }).join("");
     }
 
-    function checkApi() {
+    // preview photo
+    document.getElementById("photo").addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      const img = document.getElementById("preview");
+      if (!file) { img.style.display = "none"; return; }
+      img.src = URL.createObjectURL(file);
+      img.style.display = "block";
+    });
+
+    function checkApi(){
       setStatus("Connexion API... / Checking API...");
       fetch(API_BASE + "/")
-        .then(r => r.json())
-        .then(data => {
+        .then(r=>r.json())
+        .then(data=>{
           setStatus("✅ API OK");
           showCard();
-          document.getElementById("qtitle").innerText = "API Status";
-          document.getElementById("median").innerText = "Online";
-          document.getElementById("avg").innerText = "Online";
-          document.getElementById("sales").innerText = "";
-          document.getElementById("fx").innerText = "";
-          document.getElementById("source").innerText = JSON.stringify(data);
-          document.getElementById("raw").innerText = JSON.stringify(data, null, 2);
+          document.getElementById("qtitle").innerText="API Status";
+          document.getElementById("median").innerText="Online";
+          document.getElementById("avg").innerText="Online";
+          document.getElementById("sales").innerText="";
+          document.getElementById("fx").innerText="";
+          document.getElementById("source").innerText=JSON.stringify(data);
+          document.getElementById("raw").innerText=JSON.stringify(data,null,2);
           renderTop5([]);
         })
-        .catch(err => {
-          setStatus("❌ Erreur API: " + (err?.message || "connexion impossible"));
-        });
+        .catch(err=>setStatus("❌ Erreur API: " + (err?.message||"connexion impossible")));
     }
 
-    function searchCard() {
-      const q = document.getElementById("q").value.trim();
-      if (!q) {
-        setStatus("Entre un nom de carte / Enter a card name");
-        return;
-      }
+    function searchCard(){
+      const q=document.getElementById("q").value.trim();
+      if(!q){ setStatus("Entre un nom de carte / Enter a card name"); return; }
 
       setStatus("Recherche... / Searching...");
       hideCard();
 
       fetch(API_BASE + "/search?q=" + encodeURIComponent(q))
-        .then(r => r.json())
-        .then(data => {
+        .then(r=>r.json())
+        .then(data=>{
           showCard();
-          document.getElementById("qtitle").innerText = q;
+          document.getElementById("qtitle").innerText=q;
 
-          if (data.error) {
-            document.getElementById("median").innerText = "—";
-            document.getElementById("avg").innerText = "—";
-            document.getElementById("sales").innerText = (data.note_fr || "") + " / " + (data.note_en || "");
-            document.getElementById("fx").innerText = "";
-            document.getElementById("source").innerText = "";
-            document.getElementById("raw").innerText = JSON.stringify(data, null, 2);
-            renderTop5(data.top_sales || []);
-            setStatus("⚠️ " + (data.note_fr || "Erreur"));
+          if(data.error){
+            document.getElementById("median").innerText="—";
+            document.getElementById("avg").innerText="—";
+            document.getElementById("sales").innerText=(data.note_fr||"")+" / "+(data.note_en||"");
+            document.getElementById("fx").innerText="";
+            document.getElementById("source").innerText="";
+            document.getElementById("raw").innerText=JSON.stringify(data,null,2);
+            renderTop5(data.top_sales||[]);
+            setStatus("⚠️ " + (data.note_fr||"Erreur"));
             return;
           }
 
-          document.getElementById("median").innerText = moneyCAD(data.median_price_cad);
-          document.getElementById("avg").innerText = moneyCAD(data.average_price_cad);
-          document.getElementById("sales").innerText = "Ventes utilisées / Sales used: " + (data.sales_used ?? "—");
-          document.getElementById("fx").innerText = "USD→CAD: " + (data.usd_to_cad ?? "—");
-          document.getElementById("source").innerText = "Source: " + (data.source || "—");
-          document.getElementById("raw").innerText = JSON.stringify(data, null, 2);
-
-          renderTop5(data.top_sales || []);
+          document.getElementById("median").innerText=moneyCAD(data.median_price_cad);
+          document.getElementById("avg").innerText=moneyCAD(data.average_price_cad);
+          document.getElementById("sales").innerText="Ventes utilisées / Sales used: " + (data.sales_used ?? "—");
+          document.getElementById("fx").innerText="USD→CAD: " + (data.usd_to_cad ?? "—");
+          document.getElementById("source").innerText="Source: " + (data.source || "—");
+          document.getElementById("raw").innerText=JSON.stringify(data,null,2);
+          renderTop5(data.top_sales||[]);
           setStatus("✅ Terminé");
         })
-        .catch(err => {
-          setStatus("❌ Erreur: " + (err?.message || "connexion impossible"));
-        });
+        .catch(err=>setStatus("❌ Erreur: " + (err?.message||"connexion impossible")));
+    }
+
+    async function analyzePhoto(){
+      const input = document.getElementById("photo");
+      const file = input.files && input.files[0];
+      if(!file){
+        setStatus("Choisis une photo / Choose a photo");
+        return;
+      }
+
+      setStatus("Analyse photo (OCR)... / Analyzing photo...");
+      hideCard();
+
+      const form = new FormData();
+      form.append("file", file);
+
+      try{
+        const res = await fetch(API_BASE + "/photo", { method: "POST", body: form });
+        const data = await res.json();
+
+        if(data.error){
+          setStatus("❌ OCR error: " + data.error);
+          return;
+        }
+
+        // Mets la suggestion dans la barre de recherche
+        if(data.suggested_query){
+          document.getElementById("q").value = data.suggested_query;
+          setStatus("✅ Texte détecté. Tu peux ajuster puis lancer la recherche.");
+          // Lance automatiquement la recherche (tu peux enlever ça si tu veux)
+          searchCard();
+        } else {
+          setStatus("⚠️ Texte difficile à lire. Essaie une photo plus nette (lumière, pas de reflet).");
+          showCard();
+          document.getElementById("qtitle").innerText="OCR résultat";
+          document.getElementById("median").innerText="—";
+          document.getElementById("avg").innerText="—";
+          document.getElementById("sales").innerText="";
+          document.getElementById("fx").innerText="";
+          document.getElementById("source").innerText="";
+          document.getElementById("raw").innerText=JSON.stringify(data,null,2);
+          renderTop5([]);
+        }
+      } catch(err){
+        setStatus("❌ Erreur OCR: " + (err?.message||"connexion impossible"));
+      }
     }
   </script>
 </body>
