@@ -1,8 +1,9 @@
 import os
 import time
+import re
 import requests
 import statistics
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="IceValue API")
@@ -17,6 +18,10 @@ app.add_middleware(
 
 EBAY_CLIENT_ID = os.getenv("EBAY_CLIENT_ID")
 EBAY_CLIENT_SECRET = os.getenv("EBAY_CLIENT_SECRET")
+
+# OCR (V1) via OCR.Space (tu peux mettre ta clé dans Render -> Environment)
+# Si tu ne mets pas de clé, on tente le mode démo (limité).
+OCR_SPACE_API_KEY = os.getenv("OCR_SPACE_API_KEY", "helloworld")
 
 # ---- FX cache (USD -> CAD) ----
 _FX_CACHE = {"rate": None, "ts": 0}
@@ -42,10 +47,7 @@ def get_usd_cad_rate():
 def get_ebay_token():
     url = "https://api.ebay.com/identity/v1/oauth2/token"
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
-    data = {
-        "grant_type": "client_credentials",
-        "scope": "https://api.ebay.com/oauth/api_scope",
-    }
+    data = {"grant_type": "client_credentials", "scope": "https://api.ebay.com/oauth/api_scope"}
     r = requests.post(
         url,
         auth=(EBAY_CLIENT_ID, EBAY_CLIENT_SECRET),
@@ -63,18 +65,98 @@ def fetch_sold_items(query, token):
         "Content-Type": "application/json",
         "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
     }
-    params = {
-        "q": query,
-        "filter": "soldItemsOnly:true",
-        "limit": 20,
-    }
+    params = {"q": query, "filter": "soldItemsOnly:true", "limit": 20}
     r = requests.get(url, headers=headers, params=params, timeout=20)
     r.raise_for_status()
     return r.json().get("itemSummaries", [])
 
+def build_suggested_query(ocr_text: str) -> str:
+    """
+    Heuristique simple pour V1:
+    - Nettoie le texte
+    - Garde mots utiles (joueur, marque, année, PSA/BGS/SGC, numéro, etc.)
+    - Construit une requête courte.
+    """
+    t = (ocr_text or "").strip()
+    t = re.sub(r"\s+", " ", t)
+
+    # mots clés souvent utiles sur cartes
+    keywords = ["upper deck", "opc", "o-pee-chee", "young guns", "mvp", "spx", "spa",
+                "psa", "bgs", "sgc", "rookie", "rc", "autograph", "auto", "canvas"]
+
+    low = t.lower()
+
+    picked = []
+    for k in keywords:
+        if k in low:
+            picked.append(k)
+
+    # cherche une année 19xx ou 20xx
+    m = re.search(r"\b(19|20)\d{2}\b", t)
+    year = m.group(0) if m else ""
+
+    # cherche un grade PSA/BGS/SGC + chiffre (ex: PSA 10)
+    grade = ""
+    mg = re.search(r"\b(PSA|BGS|SGC)\s*([0-9]{1,2}(\.[0-9])?)\b", t, re.IGNORECASE)
+    if mg:
+        grade = f"{mg.group(1).upper()} {mg.group(2)}"
+
+    # garde seulement une partie du texte pour éviter des requêtes trop longues
+    base = t[:120]
+
+    parts = []
+    if year:
+        parts.append(year)
+    # base (souvent joueur + marque)
+    parts.append(base)
+
+    if grade:
+        parts.append(grade)
+    if picked:
+        parts.append(" ".join(dict.fromkeys(picked)))  # unique
+
+    # nettoie final
+    q = " ".join(parts)
+    q = re.sub(r"[^A-Za-z0-9 \-\.#]", " ", q)
+    q = re.sub(r"\s+", " ", q).strip()
+    return q[:160] if q else ""
+
+def ocr_space_extract_text(image_bytes: bytes, filename: str) -> str:
+    url = "https://api.ocr.space/parse/image"
+    files = {"filename": (filename or "card.jpg", image_bytes)}
+    data = {
+        "apikey": OCR_SPACE_API_KEY,
+        "language": "eng",          # cartes souvent EN; on peut changer plus tard
+        "isOverlayRequired": "false",
+        "OCREngine": "2"
+    }
+    r = requests.post(url, files=files, data=data, timeout=60)
+    r.raise_for_status()
+    j = r.json()
+    parsed = j.get("ParsedResults") or []
+    if not parsed:
+        return ""
+    return (parsed[0].get("ParsedText") or "").strip()
+
 @app.get("/")
 def home():
     return {"app": "IceValue", "status": "online", "language": ["fr", "en"]}
+
+@app.post("/photo")
+async def photo_to_query(file: UploadFile = File(...)):
+    content = await file.read()
+    if not content:
+        return {"error": "Empty file"}
+
+    text = ocr_space_extract_text(content, file.filename or "card.jpg")
+    suggested = build_suggested_query(text)
+
+    return {
+        "ocr_text": text,
+        "suggested_query": suggested,
+        "note_fr": "Suggestion automatique. Tu peux modifier la recherche avant de lancer le prix.",
+        "note_en": "Auto-suggestion. You can edit the search before pricing.",
+    }
 
 @app.get("/search")
 def search(q: str):
@@ -88,7 +170,6 @@ def search(q: str):
         "set", "complete set", "team set"
     ]
 
-    # On garde les ventes (titre + prix + lien) pour montrer un Top 5
     sales = []
     prices_usd = []
 
@@ -116,11 +197,7 @@ def search(q: str):
 
         url = item.get("itemWebUrl") or item.get("itemHref") or ""
 
-        sales.append({
-            "title": title_text,
-            "price_usd": price,
-            "url": url
-        })
+        sales.append({"title": title_text, "price_usd": price, "url": url})
         prices_usd.append(price)
 
     if len(prices_usd) < 3:
@@ -133,15 +210,9 @@ def search(q: str):
             "top_sales": []
         }
 
-    # Nettoyage des valeurs extrêmes : enlève 1 plus bas + 1 plus haut si assez de ventes
     prices_usd.sort()
-    trim = (len(prices_usd) > 6)
-    if trim:
-        used_prices = prices_usd[1:-1]
-    else:
-        used_prices = prices_usd[:]
+    used_prices = prices_usd[1:-1] if len(prices_usd) > 6 else prices_usd[:]
 
-    # Garder seulement les ventes qui correspondent aux prix utilisés (en gérant les doublons)
     remaining = used_prices.copy()
     filtered_sales = []
     for s in sales:
@@ -149,7 +220,6 @@ def search(q: str):
             filtered_sales.append(s)
             remaining.remove(s["price_usd"])
 
-    # Top 5 (on les classe par prix décroissant)
     filtered_sales.sort(key=lambda x: x["price_usd"], reverse=True)
     top5 = filtered_sales[:5]
 
