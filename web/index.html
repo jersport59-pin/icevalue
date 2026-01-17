@@ -211,11 +211,11 @@
         }
 
         // Mets la suggestion dans la barre de recherche
-        if(data.suggested_query){
-          document.getElementById("q").value = data.suggested_query;
-          setStatus("✅ Texte détecté. Tu peux ajuster puis lancer la recherche.");
-          // Lance automatiquement la recherche (tu peux enlever ça si tu veux)
-          searchCard();
+if(data.suggested_query){
+  document.getElementById("q").value = data.suggested_query;
+  setStatus("✅ Texte détecté. Corrige au besoin (ex: TORONTO), puis clique Rechercher.");
+  // IMPORTANT: on ne lance plus automatiquement searchCard()
+}
         } else {
           setStatus("⚠️ Texte difficile à lire. Essaie une photo plus nette (lumière, pas de reflet).");
           showCard();
