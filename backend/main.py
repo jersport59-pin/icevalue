@@ -19,8 +19,6 @@ app.add_middleware(
 EBAY_CLIENT_ID = os.getenv("EBAY_CLIENT_ID")
 EBAY_CLIENT_SECRET = os.getenv("EBAY_CLIENT_SECRET")
 
-# OCR (V1) via OCR.Space (tu peux mettre ta clé dans Render -> Environment)
-# Si tu ne mets pas de clé, on tente le mode démo (limité).
 OCR_SPACE_API_KEY = os.getenv("OCR_SPACE_API_KEY", "helloworld")
 
 # ---- FX cache (USD -> CAD) ----
@@ -45,6 +43,9 @@ def get_usd_cad_rate():
     return rate
 
 def get_ebay_token():
+    if not EBAY_CLIENT_ID or not EBAY_CLIENT_SECRET:
+        raise RuntimeError("Missing eBay credentials (EBAY_CLIENT_ID / EBAY_CLIENT_SECRET)")
+
     url = "https://api.ebay.com/identity/v1/oauth2/token"
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
     data = {"grant_type": "client_credentials", "scope": "https://api.ebay.com/oauth/api_scope"}
@@ -63,11 +64,18 @@ def fetch_sold_items(query, token):
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
-        # IMPORTANT: marketplace Canada
         "X-EBAY-C-MARKETPLACE-ID": "EBAY_CA",
     }
-    params = {"q": query, "filter": "soldItemsOnly:true", "limit": 20}
-    r = requests.get(url, headers=headers, params=params, timeout=20)
+
+    # IMPORTANT:
+    # Browse API retourne souvent FIXED_PRICE par défaut, donc on ajoute AUCTION aussi. :contentReference[oaicite:1]{index=1}
+    params = {
+        "q": query,
+        "limit": 50,
+        "filter": "soldItemsOnly:true,buyingOptions:{FIXED_PRICE|AUCTION}",
+    }
+
+    r = requests.get(url, headers=headers, params=params, timeout=25)
     r.raise_for_status()
     return r.json().get("itemSummaries", [])
 
@@ -81,11 +89,7 @@ def build_suggested_query(ocr_text: str) -> str:
     ]
 
     low = t.lower()
-
-    picked = []
-    for k in keywords:
-        if k in low:
-            picked.append(k)
+    picked = [k for k in keywords if k in low]
 
     m = re.search(r"\b(19|20)\d{2}\b", t)
     year = m.group(0) if m else ""
@@ -168,7 +172,6 @@ def search(q: str):
     for item in items:
         title_text = item.get("title") or ""
         title = title_text.lower()
-
         if any(word in title for word in excluded_titles):
             continue
 
@@ -176,7 +179,6 @@ def search(q: str):
         val = p.get("value")
         cur = p.get("currency")
 
-        # Accepte USD et CAD
         if not val or (cur not in ("USD", "CAD", None)):
             continue
 
@@ -188,7 +190,6 @@ def search(q: str):
         if price <= 5 or price >= 50000:
             continue
 
-        # Convertir en CAD si USD
         if cur == "USD" or cur is None:
             price_usd = price
             price_cad = price * usd_to_cad
@@ -198,22 +199,23 @@ def search(q: str):
 
         url = item.get("itemWebUrl") or item.get("itemHref") or ""
 
-        sales.append({
-            "title": title_text,
-            "price_cad": price_cad,
-            "price_usd": price_usd,
-            "url": url
-        })
+        sales.append({"title": title_text, "price_cad": price_cad, "price_usd": price_usd, "url": url})
         prices_cad.append(price_cad)
 
     if len(prices_cad) < 3:
         return {
             "query": q,
             "error": "Not enough data",
-            "note_fr": "Pas assez de ventes récentes (ou elles ont été filtrées / devise). Essaie une recherche plus précise.",
-            "note_en": "Not enough recent sales (or filtered out / currency). Try a more specific query.",
+            "note_fr": "Pas assez de ventes trouvées (ou filtrées). Essaie une recherche plus précise.",
+            "note_en": "Not enough sales found (or filtered). Try a more specific query.",
             "sales_used": len(prices_cad),
-            "top_sales": []
+            "top_sales": [],
+            "debug": {
+                "ebay_items_returned": len(items),
+                "after_filters": len(prices_cad),
+                "marketplace": "EBAY_CA",
+                "filter_used": "soldItemsOnly:true,buyingOptions:{FIXED_PRICE|AUCTION}"
+            }
         }
 
     prices_cad.sort()
@@ -222,7 +224,6 @@ def search(q: str):
     remaining = used_prices_cad.copy()
     filtered_sales = []
     for s in sales:
-        # match par valeur CAD (tolérance)
         for rp in remaining:
             if abs(s["price_cad"] - rp) < 0.0001:
                 filtered_sales.append(s)
@@ -239,7 +240,7 @@ def search(q: str):
         "median_price_cad": round(statistics.median(used_prices_cad), 2),
         "average_price_cad": round((sum(used_prices_cad) / len(used_prices_cad)), 2),
         "sales_used": len(used_prices_cad),
-        "source": "eBay sold listings (CA) + Bank of Canada FX",
+        "source": "eBay Browse API + Bank of Canada FX (CA marketplace)",
         "top_sales": [
             {
                 "title": s["title"],
@@ -248,4 +249,10 @@ def search(q: str):
                 "url": s["url"],
             } for s in top5
         ],
+        "debug": {
+            "ebay_items_returned": len(items),
+            "after_filters": len(used_prices_cad),
+            "marketplace": "EBAY_CA",
+            "filter_used": "soldItemsOnly:true,buyingOptions:{FIXED_PRICE|AUCTION}"
+        }
     }
