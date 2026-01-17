@@ -26,6 +26,18 @@ _FX_TTL_SECONDS = 60 * 60  # 1 heure
 
 EBAY_CATEGORY_SPORTS_TRADING_CARDS = "212"
 
+# --- Heuristiques "carte" (V1) ---
+SET_KEYWORDS = [
+    "upper deck", "o-pee-chee", "opc", "platinum", "allure", "mvp",
+    "series 1", "series 2", "extended series",
+    "spx", "spa", "sp authentic", "stature", "the cup",
+    "tim hortons", "credentials", "artifacts"
+]
+INSERT_KEYWORDS = [
+    "young guns", "canvas", "clear cut", "autograph", "auto",
+    "rookie", "rc", "patch", "jersey", "numbered"
+]
+
 def get_usd_cad_rate():
     now = time.time()
     if _FX_CACHE["rate"] and (now - _FX_CACHE["ts"] < _FX_TTL_SECONDS):
@@ -60,7 +72,6 @@ def fetch_sold_items(query, token, marketplace_id="EBAY_CA", category_id=None):
         "Content-Type": "application/json",
         "X-EBAY-C-MARKETPLACE-ID": marketplace_id,
     }
-
     params = {
         "q": query,
         "limit": 50,
@@ -73,15 +84,50 @@ def fetch_sold_items(query, token, marketplace_id="EBAY_CA", category_id=None):
     r.raise_for_status()
     return r.json().get("itemSummaries", [])
 
+def extract_grade(text: str) -> str:
+    mg = re.search(r"\b(PSA|BGS|SGC)\s*([0-9]{1,2}(\.[0-9])?)\b", text or "", re.IGNORECASE)
+    if not mg:
+        return ""
+    return f"{mg.group(1).upper()} {mg.group(2)}"
+
+def extract_year(text: str) -> str:
+    """
+    Supporte: 2020-21, 2020/21, 2023-24, 2016, etc.
+    """
+    t = text or ""
+    m = re.search(r"\b(19|20)\d{2}\s*[-/]\s*\d{2}\b", t)
+    if m:
+        return re.sub(r"\s+", "", m.group(0)).replace("/", "-")
+    m2 = re.search(r"\b(19|20)\d{2}\b", t)
+    return m2.group(0) if m2 else ""
+
+def extract_card_number(text: str) -> str:
+    """
+    Supporte: #208, No 208, Card 208
+    """
+    t = text or ""
+    m = re.search(r"(#|No\.?|Card)\s*([0-9]{1,4})\b", t, re.IGNORECASE)
+    if m:
+        return f"#{m.group(2)}"
+    return ""
+
+def extract_keywords(text: str, keywords: list[str]) -> list[str]:
+    low = (text or "").lower()
+    picked = []
+    for k in keywords:
+        if k in low:
+            picked.append(k)
+    # unique en gardant l'ordre
+    seen = set()
+    out = []
+    for k in picked:
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(k)
+    return out
+
 def simplify_query(q: str, max_words: int = 7) -> str:
-    """
-    Nettoyage OCR -> requête eBay simple et robuste:
-    - enlève caractères bizarres
-    - enlève mots trop courts / bruit
-    - remplace ORONTO->TORONTO (cas fréquent)
-    - enlève doublons
-    - limite à max_words
-    """
     q = (q or "").strip()
     q = q.replace(" OR ", " ").replace("|", " ")
     q = re.sub(r"[^A-Za-z0-9 \-#]", " ", q)
@@ -100,12 +146,10 @@ def simplify_query(q: str, max_words: int = 7) -> str:
             continue
         cleaned.append(w2)
 
-    # ORONTO -> TORONTO si TORONTO absent
     joined = " ".join(cleaned).upper()
     if "ORONTO" in joined and "TORONTO" not in joined:
         cleaned = [("TORONTO" if w.upper() == "ORONTO" else w) for w in cleaned]
 
-    # unique en gardant l'ordre
     seen = set()
     unique = []
     for w in cleaned:
@@ -117,42 +161,69 @@ def simplify_query(q: str, max_words: int = 7) -> str:
 
     return " ".join(unique[:max_words]).strip()
 
-def extract_grade(text: str) -> str:
-    mg = re.search(r"\b(PSA|BGS|SGC)\s*([0-9]{1,2}(\.[0-9])?)\b", text or "", re.IGNORECASE)
-    if not mg:
-        return ""
-    return f"{mg.group(1).upper()} {mg.group(2)}"
-
-def build_suggested_query_clean(ocr_text: str) -> str:
+def build_suggested_query_clean(ocr_text: str) -> tuple[str, dict]:
     """
-    Suggestion PROPRE (celle qui marche le plus souvent):
-    - simplifie + garde 6-7 mots max
-    - ajoute PSA/BGS/SGC grade si présent
+    Suggestion PROPRE améliorée:
+    base (joueur/équipe) + année + set + insert + # + grade
     """
     t = re.sub(r"\s+", " ", (ocr_text or "").strip())
+
+    year = extract_year(t)
+    card_no = extract_card_number(t)
     grade = extract_grade(t)
+
+    sets = extract_keywords(t, SET_KEYWORDS)
+    inserts = extract_keywords(t, INSERT_KEYWORDS)
+
+    # base courte (souvent joueur + équipe)
     base = simplify_query(t, max_words=7)
-    if grade and grade.lower() not in base.lower():
-        base = (base + " " + grade).strip()
-    return base[:160] if base else ""
+
+    parts = []
+    if year:
+        parts.append(year)
+    # set: prendre 1 ou 2 max
+    if sets:
+        parts.append(sets[0])
+        if len(sets) > 1 and sets[1] not in sets[0]:
+            parts.append(sets[1])
+    # insert: prendre 1 ou 2 max
+    if inserts:
+        parts.append(inserts[0])
+        if len(inserts) > 1 and inserts[1] not in inserts[0]:
+            parts.append(inserts[1])
+
+    if card_no:
+        parts.append(card_no)
+
+    if base:
+        parts.append(base)
+
+    if grade and grade.lower() not in " ".join(parts).lower():
+        parts.append(grade)
+
+    q = " ".join(parts)
+    q = re.sub(r"\s+", " ", q).strip()
+    q = q[:160] if q else ""
+
+    meta = {
+        "year": year,
+        "card_number": card_no,
+        "set_hits": sets[:3],
+        "insert_hits": inserts[:3],
+        "grade": grade
+    }
+    return q, meta
 
 def build_suggested_query_full(ocr_text: str) -> str:
-    """
-    Suggestion FULL (plus proche OCR):
-    - garde plus de mots (jusqu'à 140 chars)
-    - ajoute grade si présent
-    """
     t = re.sub(r"\s+", " ", (ocr_text or "").strip())
     grade = extract_grade(t)
 
-    # garde plus long, mais nettoie un peu
     t2 = re.sub(r"[^A-Za-z0-9 \-#]", " ", t)
     t2 = re.sub(r"\s+", " ", t2).strip()
-
     full = t2[:140].strip()
+
     if grade and grade.lower() not in full.lower():
         full = (full + " " + grade).strip()
-
     return full[:160] if full else ""
 
 def ocr_space_extract_text(image_bytes: bytes, filename: str) -> str:
@@ -179,17 +250,17 @@ async def photo_to_query(file: UploadFile = File(...)):
 
     text = ocr_space_extract_text(content, file.filename or "card.jpg")
 
-    clean = build_suggested_query_clean(text)
+    clean, meta = build_suggested_query_clean(text)
     full = build_suggested_query_full(text)
 
-    # compat: suggested_query = clean
     return {
         "ocr_text": text,
-        "suggested_query": clean,
+        "suggested_query": clean,  # compat
         "suggested_query_clean": clean,
         "suggested_query_full": full,
-        "note_fr": "Deux suggestions: PROPRE (recommandée) et OCR (brute).",
-        "note_en": "Two suggestions: CLEAN (recommended) and OCR (raw).",
+        "detected": meta,
+        "note_fr": "Suggestions améliorées (année/set/insert/#/grade). Choisis PROPRE pour le meilleur résultat.",
+        "note_en": "Improved suggestions (year/set/insert/#/grade). Choose CLEAN for best results.",
     }
 
 @app.get("/search")
@@ -197,12 +268,10 @@ def search(q: str):
     token = get_ebay_token()
     usd_to_cad = get_usd_cad_rate()
 
-    # 1) CA + catégorie 212
     items = fetch_sold_items(q, token, marketplace_id="EBAY_CA", category_id=EBAY_CATEGORY_SPORTS_TRADING_CARDS)
     query_used = q
     tried = [{"marketplace": "EBAY_CA", "category": "212", "q": q, "items": len(items)}]
 
-    # 2) fallback: simplifier q
     if len(items) == 0:
         q_simple = simplify_query(q, max_words=7)
         if q_simple and q_simple.lower() != (q or "").lower():
@@ -210,12 +279,10 @@ def search(q: str):
             query_used = q_simple
             tried.append({"marketplace": "EBAY_CA", "category": "212", "q": q_simple, "items": len(items)})
 
-    # 3) fallback: enlever catégorie
     if len(items) == 0:
         items = fetch_sold_items(query_used, token, marketplace_id="EBAY_CA", category_id=None)
         tried.append({"marketplace": "EBAY_CA", "category": None, "q": query_used, "items": len(items)})
 
-    # 4) fallback: marketplace US
     if len(items) == 0:
         items = fetch_sold_items(query_used, token, marketplace_id="EBAY_US", category_id=None)
         tried.append({"marketplace": "EBAY_US", "category": None, "q": query_used, "items": len(items)})
@@ -267,8 +334,8 @@ def search(q: str):
             "query": q,
             "query_used": query_used,
             "error": "Not enough data",
-            "note_fr": "Pas assez de ventes trouvées. Essaie d'ajouter un mot clé (marque, année, #, PSA/BGS/SGC).",
-            "note_en": "Not enough sales found. Try adding a keyword (set, year, card #, PSA/BGS/SGC).",
+            "note_fr": "Pas assez de ventes trouvées. Ajoute année / set / # / Young Guns / PSA si possible.",
+            "note_en": "Not enough sales found. Add year / set / # / Young Guns / PSA if possible.",
             "sales_used": len(prices_cad),
             "top_sales": [],
             "debug": {"tried": tried, "ebay_items_returned": len(items), "after_filters": len(prices_cad)},
