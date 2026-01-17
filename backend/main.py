@@ -26,17 +26,25 @@ _FX_TTL_SECONDS = 60 * 60  # 1 heure
 
 EBAY_CATEGORY_SPORTS_TRADING_CARDS = "212"
 
-# --- Heuristiques "carte" (V1) ---
+# --- Heuristiques "carte" ---
 SET_KEYWORDS = [
     "upper deck", "o-pee-chee", "opc", "platinum", "allure", "mvp",
     "series 1", "series 2", "extended series",
     "spx", "spa", "sp authentic", "stature", "the cup",
     "tim hortons", "credentials", "artifacts"
 ]
+
+# NOTE: Young Guns est géré avec une détection robuste (regex) plus bas,
+# mais on garde aussi des variantes ici pour compléter.
 INSERT_KEYWORDS = [
-    "young guns", "canvas", "clear cut", "autograph", "auto",
-    "rookie", "rc", "patch", "jersey", "numbered"
+    "young guns", "younggun", "youngguns", "yg",
+    "canvas", "clear cut", "clearcut",
+    "autograph", "auto",
+    "rookie", "rc",
+    "patch", "jersey",
+    "numbered"
 ]
+
 
 def get_usd_cad_rate():
     now = time.time()
@@ -54,6 +62,7 @@ def get_usd_cad_rate():
     _FX_CACHE["ts"] = now
     return rate
 
+
 def get_ebay_token():
     if not EBAY_CLIENT_ID or not EBAY_CLIENT_SECRET:
         raise RuntimeError("Missing eBay credentials (EBAY_CLIENT_ID / EBAY_CLIENT_SECRET)")
@@ -64,6 +73,7 @@ def get_ebay_token():
     r = requests.post(url, auth=(EBAY_CLIENT_ID, EBAY_CLIENT_SECRET), headers=headers, data=data, timeout=20)
     r.raise_for_status()
     return r.json()["access_token"]
+
 
 def fetch_sold_items(query, token, marketplace_id="EBAY_CA", category_id=None):
     url = "https://api.ebay.com/buy/browse/v1/item_summary/search"
@@ -84,11 +94,13 @@ def fetch_sold_items(query, token, marketplace_id="EBAY_CA", category_id=None):
     r.raise_for_status()
     return r.json().get("itemSummaries", [])
 
+
 def extract_grade(text: str) -> str:
     mg = re.search(r"\b(PSA|BGS|SGC)\s*([0-9]{1,2}(\.[0-9])?)\b", text or "", re.IGNORECASE)
     if not mg:
         return ""
     return f"{mg.group(1).upper()} {mg.group(2)}"
+
 
 def extract_year(text: str) -> str:
     """
@@ -101,9 +113,10 @@ def extract_year(text: str) -> str:
     m2 = re.search(r"\b(19|20)\d{2}\b", t)
     return m2.group(0) if m2 else ""
 
+
 def extract_card_number(text: str) -> str:
     """
-    Supporte: #208, No 208, Card 208
+    Supporte: #208, No 208, No.208, Card 208
     """
     t = text or ""
     m = re.search(r"(#|No\.?|Card)\s*([0-9]{1,4})\b", t, re.IGNORECASE)
@@ -111,12 +124,41 @@ def extract_card_number(text: str) -> str:
         return f"#{m.group(2)}"
     return ""
 
+
 def extract_keywords(text: str, keywords: list[str]) -> list[str]:
+    """
+    Détection keywords "tolérante"
+    - Détection robuste pour Young Guns (OCR imparfait)
+    - Détection simple pour les autres mots clés
+    """
     low = (text or "").lower()
+    low = re.sub(r"\s+", " ", low).strip()
+
     picked = []
+
+    # --- Détection robuste "Young Guns" ---
+    # Match:
+    # - "young guns" / "youngguns"
+    # - "y0ung guns" (OCR 0 vs o)
+    # - "yg" / "y g" / "y-g"
+    if (
+        "young guns" in low
+        or "youngguns" in low
+        or re.search(r"y[o0]ung\s*g[u v]\s*n[s5]\b", low)  # tolère OCR sur "guns"
+        or re.search(r"\by\s*[-]?\s*g\b", low)             # "yg", "y g", "y-g"
+    ):
+        picked.append("young guns")
+
+    # --- Autres keywords (détection simple) ---
     for k in keywords:
-        if k in low:
-            picked.append(k)
+        k_norm = re.sub(r"\s+", " ", (k or "").strip().lower())
+        if not k_norm:
+            continue
+        if k_norm in {"young guns", "yg", "younggun", "youngguns"}:
+            continue  # déjà géré
+        if k_norm in low:
+            picked.append(k_norm)
+
     # unique en gardant l'ordre
     seen = set()
     out = []
@@ -127,7 +169,11 @@ def extract_keywords(text: str, keywords: list[str]) -> list[str]:
         out.append(k)
     return out
 
+
 def simplify_query(q: str, max_words: int = 7) -> str:
+    """
+    Nettoyage OCR -> requête eBay simple et robuste
+    """
     q = (q or "").strip()
     q = q.replace(" OR ", " ").replace("|", " ")
     q = re.sub(r"[^A-Za-z0-9 \-#]", " ", q)
@@ -146,10 +192,12 @@ def simplify_query(q: str, max_words: int = 7) -> str:
             continue
         cleaned.append(w2)
 
+    # Correction simple: ORONTO -> TORONTO si TORONTO absent
     joined = " ".join(cleaned).upper()
     if "ORONTO" in joined and "TORONTO" not in joined:
         cleaned = [("TORONTO" if w.upper() == "ORONTO" else w) for w in cleaned]
 
+    # unique en gardant l'ordre
     seen = set()
     unique = []
     for w in cleaned:
@@ -160,6 +208,7 @@ def simplify_query(q: str, max_words: int = 7) -> str:
         unique.append(w)
 
     return " ".join(unique[:max_words]).strip()
+
 
 def build_suggested_query_clean(ocr_text: str) -> tuple[str, dict]:
     """
@@ -181,12 +230,14 @@ def build_suggested_query_clean(ocr_text: str) -> tuple[str, dict]:
     parts = []
     if year:
         parts.append(year)
-    # set: prendre 1 ou 2 max
+
+    # set: 1-2 max
     if sets:
         parts.append(sets[0])
         if len(sets) > 1 and sets[1] not in sets[0]:
             parts.append(sets[1])
-    # insert: prendre 1 ou 2 max
+
+    # insert: 1-2 max
     if inserts:
         parts.append(inserts[0])
         if len(inserts) > 1 and inserts[1] not in inserts[0]:
@@ -214,6 +265,7 @@ def build_suggested_query_clean(ocr_text: str) -> tuple[str, dict]:
     }
     return q, meta
 
+
 def build_suggested_query_full(ocr_text: str) -> str:
     t = re.sub(r"\s+", " ", (ocr_text or "").strip())
     grade = extract_grade(t)
@@ -225,6 +277,7 @@ def build_suggested_query_full(ocr_text: str) -> str:
     if grade and grade.lower() not in full.lower():
         full = (full + " " + grade).strip()
     return full[:160] if full else ""
+
 
 def ocr_space_extract_text(image_bytes: bytes, filename: str) -> str:
     url = "https://api.ocr.space/parse/image"
@@ -238,9 +291,11 @@ def ocr_space_extract_text(image_bytes: bytes, filename: str) -> str:
         return ""
     return (parsed[0].get("ParsedText") or "").strip()
 
+
 @app.get("/")
 def home():
     return {"app": "IceValue", "status": "online", "language": ["fr", "en"]}
+
 
 @app.post("/photo")
 async def photo_to_query(file: UploadFile = File(...)):
@@ -263,15 +318,18 @@ async def photo_to_query(file: UploadFile = File(...)):
         "note_en": "Improved suggestions (year/set/insert/#/grade). Choose CLEAN for best results.",
     }
 
+
 @app.get("/search")
 def search(q: str):
     token = get_ebay_token()
     usd_to_cad = get_usd_cad_rate()
 
+    # 1) CA + catégorie 212
     items = fetch_sold_items(q, token, marketplace_id="EBAY_CA", category_id=EBAY_CATEGORY_SPORTS_TRADING_CARDS)
     query_used = q
     tried = [{"marketplace": "EBAY_CA", "category": "212", "q": q, "items": len(items)}]
 
+    # 2) fallback: simplifier q
     if len(items) == 0:
         q_simple = simplify_query(q, max_words=7)
         if q_simple and q_simple.lower() != (q or "").lower():
@@ -279,10 +337,12 @@ def search(q: str):
             query_used = q_simple
             tried.append({"marketplace": "EBAY_CA", "category": "212", "q": q_simple, "items": len(items)})
 
+    # 3) fallback: enlever catégorie
     if len(items) == 0:
         items = fetch_sold_items(query_used, token, marketplace_id="EBAY_CA", category_id=None)
         tried.append({"marketplace": "EBAY_CA", "category": None, "q": query_used, "items": len(items)})
 
+    # 4) fallback: marketplace US
     if len(items) == 0:
         items = fetch_sold_items(query_used, token, marketplace_id="EBAY_US", category_id=None)
         tried.append({"marketplace": "EBAY_US", "category": None, "q": query_used, "items": len(items)})
