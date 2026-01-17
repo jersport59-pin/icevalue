@@ -7,7 +7,7 @@
 
   <style>
     body { font-family: Arial, sans-serif; background:#0B3C5D; color:#fff; margin:0; padding:0; }
-    .container { max-width:720px; margin:50px auto; background:#fff; color:#000; padding:26px; border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,0.15); }
+    .container { max-width:760px; margin:50px auto; background:#fff; color:#000; padding:26px; border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,0.15); }
     .topbar{ display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; }
     .brand{ display:flex; align-items:center; gap:10px; font-weight:800; font-size:20px; letter-spacing:.3px; }
     .pill{ font-size:12px; padding:6px 10px; border-radius:999px; background:#eef3f7; color:#0B3C5D; font-weight:700; white-space:nowrap; }
@@ -17,6 +17,29 @@
     button{ flex:1; min-width:220px; padding:12px; background:#0B3C5D; color:#fff; border:none; border-radius:10px; font-size:16px; cursor:pointer; }
     button.secondary{ background:#163d58; opacity:.92; }
     button.photo{ background:#0b5d3c; }
+    button.small { min-width: 200px; font-size: 14px; padding: 10px; }
+
+    .suggestBox{
+      margin-top:12px;
+      background:#f6f7f8;
+      border:1px solid #e6e6e6;
+      border-radius:14px;
+      padding:14px;
+      display:none;
+    }
+    .suggestTitle{ font-weight:900; color:#0B3C5D; margin-bottom:8px; }
+    .suggestRow{ display:flex; gap:10px; flex-wrap:wrap; }
+    .chip{
+      background:#fff;
+      border:1px solid #e6e6e6;
+      border-radius:12px;
+      padding:10px;
+      flex:1;
+      min-width:240px;
+    }
+    .chipLabel{ font-size:12px; opacity:.7; font-weight:900; text-transform:uppercase; letter-spacing:.6px; }
+    .chipText{ margin-top:6px; font-weight:800; word-break: break-word; }
+
     .card{ margin-top:16px; background:#f6f7f8; border-radius:14px; padding:16px; border:1px solid #e6e6e6; }
     .qtitle{ font-weight:800; margin:0 0 10px 0; font-size:16px; word-break:break-word; }
     .grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
@@ -45,8 +68,8 @@
     </div>
 
     <div class="hint">
-      <div><b>FR</b> : Tu peux chercher par texte ou envoyer une photo de la carte.</div>
-      <div><b>EN</b> : Search by text or upload a photo of the card.</div>
+      <div><b>FR</b> : Cherche par texte OU utilise une photo. Après OCR, choisis “Propre” (recommandé).</div>
+      <div><b>EN</b> : Search by text OR use a photo. After OCR, choose “Clean” (recommended).</div>
     </div>
 
     <input id="q" placeholder="Ex: Connor McDavid Young Guns PSA 10" />
@@ -56,8 +79,35 @@
 
     <div class="row">
       <button onclick="searchCard()">Rechercher / Search</button>
-      <button class="photo" onclick="analyzePhoto()">📷 Analyser Photo</button>
+      <button class="photo" onclick="analyzePhoto()">📷 OCR Photo</button>
       <button class="secondary" onclick="checkApi()">Tester API</button>
+    </div>
+
+    <!-- Suggestions OCR (Option B) -->
+    <div id="suggestBox" class="suggestBox">
+      <div class="suggestTitle">Suggestions OCR</div>
+
+      <div class="suggestRow">
+        <div class="chip">
+          <div class="chipLabel">PROPRE / CLEAN (recommandé)</div>
+          <div id="sClean" class="chipText">—</div>
+          <div class="row" style="margin-top:10px;">
+            <button class="small" onclick="useClean()">Utiliser Propre + Rechercher</button>
+          </div>
+        </div>
+
+        <div class="chip">
+          <div class="chipLabel">OCR / RAW (brut)</div>
+          <div id="sFull" class="chipText">—</div>
+          <div class="row" style="margin-top:10px;">
+            <button class="small secondary" onclick="useRaw()">Utiliser OCR + Rechercher</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:10px; font-size:12px; opacity:.75;">
+        Astuce: si la carte est vintage, commence par <b>Joueur + Équipe</b> (ex: “Joseph Woll Maple Leafs”).
+      </div>
     </div>
 
     <div id="card" class="card" style="display:none;">
@@ -92,12 +142,37 @@
   <script>
     const API_BASE = "https://icevalue-api.onrender.com";
 
+    let lastClean = "";
+    let lastFull = "";
+
     function moneyCAD(n){ if(typeof n!=="number") return "$—"; return "$"+n.toFixed(2)+" CAD"; }
     function escapeHtml(s){ return (s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;"); }
     function setStatus(msg){ document.getElementById("status").innerText = msg||""; }
     function showCard(){ document.getElementById("card").style.display = "block"; }
     function hideCard(){ document.getElementById("card").style.display = "none"; }
     function toggleRaw(){ const raw=document.getElementById("raw"); raw.style.display=(raw.style.display==="none"||raw.style.display==="")?"block":"none"; }
+
+    function showSuggestBox(show){
+      document.getElementById("suggestBox").style.display = show ? "block" : "none";
+    }
+
+    function useClean(){
+      if(!lastClean){
+        alert("Pas de suggestion propre / No clean suggestion");
+        return;
+      }
+      document.getElementById("q").value = lastClean;
+      searchCard();
+    }
+
+    function useRaw(){
+      if(!lastFull){
+        alert("Pas de suggestion OCR / No raw suggestion");
+        return;
+      }
+      document.getElementById("q").value = lastFull;
+      searchCard();
+    }
 
     function renderTop5(topSales){
       const top5El=document.getElementById("top5");
@@ -179,7 +254,7 @@
           document.getElementById("avg").innerText=moneyCAD(data.average_price_cad);
           document.getElementById("sales").innerText="Ventes utilisées / Sales used: " + (data.sales_used ?? "—");
           document.getElementById("fx").innerText="USD→CAD: " + (data.usd_to_cad ?? "—");
-          document.getElementById("source").innerText="Source: " + (data.source || "—");
+          document.getElementById("source").innerText="Source: " + (data.source || "—") + (data.query_used ? (" | query_used: " + data.query_used) : "");
           document.getElementById("raw").innerText=JSON.stringify(data,null,2);
           renderTop5(data.top_sales||[]);
           setStatus("✅ Terminé");
@@ -199,6 +274,7 @@
 
       setStatus("Analyse photo (OCR)... / Analyzing photo...");
       hideCard();
+      showSuggestBox(false);
 
       const form = new FormData();
       form.append("file", file);
@@ -215,7 +291,7 @@
 
         const data = await res.json();
 
-        // Montre toujours quelque chose (anti-silence)
+        // Toujours afficher le raw JSON (anti-silence)
         showCard();
         document.getElementById("qtitle").innerText="OCR Result";
         document.getElementById("median").innerText="—";
@@ -233,10 +309,22 @@
           return;
         }
 
-        if(data.suggested_query){
-          document.getElementById("q").value = data.suggested_query;
-          setStatus("✅ OCR OK. Corrige la recherche au besoin puis clique Rechercher.");
-          alert("OCR OK ✅\nSuggestion mise dans la barre de recherche.");
+        lastClean = (data.suggested_query_clean || data.suggested_query || "").trim();
+        lastFull  = (data.suggested_query_full  || "").trim();
+
+        document.getElementById("sClean").innerText = lastClean || "—";
+        document.getElementById("sFull").innerText  = lastFull  || "—";
+        showSuggestBox(true);
+
+        // Remplis la barre avec la suggestion PROPRE par défaut
+        if(lastClean){
+          document.getElementById("q").value = lastClean;
+          setStatus("✅ OCR OK. Clique 'Utiliser Propre + Rechercher' (recommandé).");
+          alert("OCR OK ✅\nSuggestions affichées (Propre recommandé).");
+        } else if(lastFull){
+          document.getElementById("q").value = lastFull;
+          setStatus("⚠️ OCR OK mais pas de suggestion propre. Essaie 'OCR + Rechercher' ou modifie le texte.");
+          alert("OCR OK ✅\nSuggestion OCR brute disponible.");
         } else {
           setStatus("⚠️ Texte difficile à lire. Essaie une photo plus nette (lumière, pas de reflet).");
           alert("OCR: aucun texte lisible");
