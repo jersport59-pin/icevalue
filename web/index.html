@@ -21,9 +21,7 @@
       padding: 30px;
       border-radius: 12px;
     }
-    h1 {
-      text-align: center;
-    }
+    h1 { text-align: center; margin-top: 0; }
     button {
       width: 100%;
       padding: 12px;
@@ -32,6 +30,16 @@
       border: none;
       border-radius: 8px;
       font-size: 16px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    input {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      margin: 12px 0;
+      box-sizing: border-box;
     }
     .result {
       margin-top: 20px;
@@ -39,125 +47,68 @@
       background: #f0f0f0;
       padding: 10px;
       border-radius: 8px;
+      white-space: pre-wrap;
     }
-    .lang {
-      text-align: center;
-      margin-bottom: 15px;
-    }
+    .lang { text-align: center; margin-bottom: 15px; }
+    .hint { text-align:center; margin: 0 0 10px 0; opacity: 0.8; }
   </style>
 </head>
-<body>
 
-<div class="container">
-  <div class="lang">
-    🇨🇦 Français / 🇺🇸 English
+<body>
+  <div class="container">
+    <div class="lang">🇨🇦 Français / 🇺🇸 English</div>
+
+    <h1>IceValue</h1>
+    <p class="hint">
+      Valeur estimée des cartes de hockey<br>
+      Estimated hockey card values
+    </p>
+
+    <input id="q" placeholder="Ex: Connor McDavid Young Guns PSA 10" />
+    <button onclick="searchCard()">Rechercher / Search</button>
+
+    <button onclick="checkApi()">Tester la connexion à l’API</button>
+
+    <div id="result" class="result"></div>
   </div>
 
-  <h1>IceValue</h1>
-  <p style="text-align:center;">
-    Valeur estimée des cartes de hockey<br>
-    Estimated hockey card values
-    <input id="q" placeholder="Ex: Connor McDavid Young Guns PSA 10"
-  style="width:100%;padding:12px;border-radius:8px;border:1px solid #ccc;margin:12px 0;" />
-
-<button onclick="searchCard()">Rechercher / Search</button>
-
-  </p>
-
-  <button onclick="checkApi()">Tester la connexion à l’API</button>
-
-  <div id="result" class="result"></div>
-</div>
-
-<script>
-  function checkApi() <script>
-  function checkApi() {
-    const resultEl = document.getElementById("result");
-    resultEl.innerText = "Connexion en cours...";
-
-    fetch("https://TON-URL-RENDER.onrender.com/")
-      .then(async (res) => {
-        const text = await res.text();
-        resultEl.innerText = "Réponse API:\n\n" + text;
-      })
-      .catch((err) => {
-        resultEl.innerText = "Erreur: " + (err?.message || "connexion impossible");
-      });
-  }
-
-  function searchCard() {
-    const q = document.getElementById("q").value.trim();
-    const resultEl = document.getElementById("result");
-
-    if (!q) {
-      resultEl.innerText = "Entre un nom de carte / Enter a card name";
-      return;
-    }
-
-    resultEl.innerText = "Recherche en cours... / Searching...";
-
-    fetch("https://icevalue-api.onrender.com/search?q=" + encodeURIComponent(q))
-      .then(res => res.json())
-      .then(data => {
-        resultEl.innerText = JSON.stringify(data, null, 2);
-      })
-      .catch(err => {
-        resultEl.innerText = "Erreur: " + (err?.message || "connexion impossible");
-      });
-  }
-</script>
-{
-    const resultEl = document.getElementById("result");
-    resultEl.innerText = "Connexion en cours...";
-
-    fetch("https://icevalue-api.onrender.com/")
-      .then(async (res) => {
-        const text = await res.text();
-        resultEl.innerText = "Réponse API:\n\n" + text;
-      })
-      .catch((err) => {
-        resultEl.innerText = "Erreur: " + (err?.message || "connexion impossible");
-      });
-  }
-</script>
-
-
-</body>
   <script>
-  function checkApi() {
-    const resultEl = document.getElementById("result");
-    resultEl.innerText = "Connexion en cours...";
+    const API_BASE = "https://icevalue-api.onrender.com";
 
-    fetch("https://icevalue-api.onrender.com/")
-      .then(async (res) => {
-        const text = await res.text();
-        resultEl.innerText = "Réponse API:\n\n" + text;
-      })
-      .catch((err) => {
-        resultEl.innerText = "Erreur: " + (err?.message || "connexion impossible");
-      });
-  }
+    function checkApi() {
+      const resultEl = document.getElementById("result");
+      resultEl.innerText = "Connexion en cours...";
 
-  function searchCard() {
-    const q = document.getElementById("q").value.trim();
-    const resultEl = document.getElementById("result");
-
-    if (!q) {
-      resultEl.innerText = "Entre un nom de carte / Enter a card name";
-      return;
+      fetch(API_BASE + "/")
+        .then(async (res) => {
+          const text = await res.text();
+          resultEl.innerText = "Réponse API:\n\n" + text;
+        })
+        .catch((err) => {
+          resultEl.innerText = "Erreur: " + (err?.message || "connexion impossible");
+        });
     }
 
-    resultEl.innerText = "Recherche en cours... / Searching...";
+    function searchCard() {
+      const q = document.getElementById("q").value.trim();
+      const resultEl = document.getElementById("result");
 
-    fetch("https://icevalue-api.onrender.com/search?q=" + encodeURIComponent(q))
-      .then(res => res.json())
-      .then(data => {
-        resultEl.innerText = JSON.stringify(data, null, 2);
-      })
-      .catch(err => {
-        resultEl.innerText = "Erreur: " + (err?.message || "connexion impossible");
-      });
-  }
-</script>
+      if (!q) {
+        resultEl.innerText = "Entre un nom de carte / Enter a card name";
+        return;
+      }
 
+      resultEl.innerText = "Recherche en cours... / Searching...";
+
+      fetch(API_BASE + "/search?q=" + encodeURIComponent(q))
+        .then(res => res.json())
+        .then(data => {
+          resultEl.innerText = JSON.stringify(data, null, 2);
+        })
+        .catch(err => {
+          resultEl.innerText = "Erreur: " + (err?.message || "connexion impossible");
+        });
+    }
+  </script>
+</body>
 </html>
