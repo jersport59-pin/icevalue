@@ -88,9 +88,14 @@ def search(q: str):
         "set", "complete set", "team set"
     ]
 
+    # On garde les ventes (titre + prix + lien) pour montrer un Top 5
+    sales = []
     prices_usd = []
+
     for item in items:
-        title = (item.get("title") or "").lower()
+        title_text = item.get("title") or ""
+        title = title_text.lower()
+
         if any(word in title for word in excluded_titles):
             continue
 
@@ -109,20 +114,44 @@ def search(q: str):
         if price <= 5 or price >= 50000:
             continue
 
+        url = item.get("itemWebUrl") or item.get("itemHref") or ""
+
+        sales.append({
+            "title": title_text,
+            "price_usd": price,
+            "url": url
+        })
         prices_usd.append(price)
 
     if len(prices_usd) < 3:
         return {
             "query": q,
             "error": "Not enough data",
-            "note_fr": "Pas assez de ventes récentes.",
-            "note_en": "Not enough recent sales.",
+            "note_fr": "Pas assez de ventes récentes (ou elles ont été filtrées).",
+            "note_en": "Not enough recent sales (or they were filtered out).",
             "sales_used": len(prices_usd),
+            "top_sales": []
         }
 
+    # Nettoyage des valeurs extrêmes : enlève 1 plus bas + 1 plus haut si assez de ventes
     prices_usd.sort()
-    if len(prices_usd) > 6:
-        prices_usd = prices_usd[1:-1]
+    trim = (len(prices_usd) > 6)
+    if trim:
+        used_prices = prices_usd[1:-1]
+    else:
+        used_prices = prices_usd[:]
+
+    # Garder seulement les ventes qui correspondent aux prix utilisés (en gérant les doublons)
+    remaining = used_prices.copy()
+    filtered_sales = []
+    for s in sales:
+        if s["price_usd"] in remaining:
+            filtered_sales.append(s)
+            remaining.remove(s["price_usd"])
+
+    # Top 5 (on les classe par prix décroissant)
+    filtered_sales.sort(key=lambda x: x["price_usd"], reverse=True)
+    top5 = filtered_sales[:5]
 
     usd_to_cad = get_usd_cad_rate()
 
@@ -130,8 +159,16 @@ def search(q: str):
         "query": q,
         "currency": "CAD",
         "usd_to_cad": round(usd_to_cad, 6),
-        "median_price_cad": round(statistics.median(prices_usd) * usd_to_cad, 2),
-        "average_price_cad": round((sum(prices_usd) / len(prices_usd)) * usd_to_cad, 2),
-        "sales_used": len(prices_usd),
+        "median_price_cad": round(statistics.median(used_prices) * usd_to_cad, 2),
+        "average_price_cad": round((sum(used_prices) / len(used_prices)) * usd_to_cad, 2),
+        "sales_used": len(used_prices),
         "source": "eBay sold listings + Bank of Canada FX",
+        "top_sales": [
+            {
+                "title": s["title"],
+                "price_cad": round(s["price_usd"] * usd_to_cad, 2),
+                "price_usd": round(s["price_usd"], 2),
+                "url": s["url"],
+            } for s in top5
+        ],
     }
