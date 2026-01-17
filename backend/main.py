@@ -45,6 +45,15 @@ INSERT_KEYWORDS = [
     "numbered"
 ]
 
+# Équipes (V1) - sert à stabiliser les requêtes OCR
+TEAM_KEYWORDS = [
+    "canadiens", "maple leafs", "leafs", "bruins", "rangers", "oilers", "flames",
+    "canucks", "jets", "senators", "avalanche", "blackhawks", "red wings",
+    "penguins", "lightning", "panthers", "stars", "kings", "devils", "islanders",
+    "sharks", "predators", "capitals", "golden knights", "kraken", "blues",
+    "hurricanes", "blue jackets", "wild", "sabres", "ducks", "coyotes"
+]
+
 
 def get_usd_cad_rate():
     now = time.time()
@@ -144,8 +153,8 @@ def extract_keywords(text: str, keywords: list[str]) -> list[str]:
     if (
         "young guns" in low
         or "youngguns" in low
-        or re.search(r"y[o0]ung\s*g[u v]\s*n[s5]\b", low)  # tolère OCR sur "guns"
-        or re.search(r"\by\s*[-]?\s*g\b", low)             # "yg", "y g", "y-g"
+        or re.search(r"y[o0]ung\s*g[u v]\s*n[s5]\b", low)
+        or re.search(r"\by\s*[-]?\s*g\b", low)
     ):
         picked.append("young guns")
 
@@ -155,7 +164,7 @@ def extract_keywords(text: str, keywords: list[str]) -> list[str]:
         if not k_norm:
             continue
         if k_norm in {"young guns", "yg", "younggun", "youngguns"}:
-            continue  # déjà géré
+            continue
         if k_norm in low:
             picked.append(k_norm)
 
@@ -172,42 +181,71 @@ def extract_keywords(text: str, keywords: list[str]) -> list[str]:
 
 def simplify_query(q: str, max_words: int = 7) -> str:
     """
-    Nettoyage OCR -> requête eBay simple et robuste
+    Nettoyage OCR -> requête eBay robuste + corrections OCR fréquentes.
     """
-    q = (q or "").strip()
+    q = (q or "").strip().lower()
+
+    # Corrections OCR fréquentes (cartes)
+    q = q.replace("younguns", "young guns")
+    q = q.replace("youngun", "young guns")
+    q = q.replace("y0ung", "young")
+    q = q.replace("bu er", "upper")
+    q = q.replace("buer", "upper")
+    q = q.replace("upp er", "upper")
+
+    # Cas fréquent: LANE lu LIVE (spécifique pour éviter des faux positifs)
+    if "live" in q and ("hutson" in q or "canadiens" in q):
+        q = q.replace("live", "lane")
+
+    # Nettoyage caractères
     q = q.replace(" OR ", " ").replace("|", " ")
-    q = re.sub(r"[^A-Za-z0-9 \-#]", " ", q)
+    q = re.sub(r"[^a-z0-9 \-#]", " ", q)
     q = re.sub(r"\s+", " ", q).strip()
 
-    parts = q.split(" ")
-    cleaned = []
-    for w in parts:
-        w2 = w.strip()
-        if len(w2) < 3:
-            continue
-        wl = w2.lower()
-        if wl in {"vintage", "card", "cards", "hockey", "nhl"}:
-            continue
-        if wl in {"ier", "1er", "lerr", "l", "le"}:
-            continue
-        cleaned.append(w2)
+    words = q.split(" ")
 
-    # Correction simple: ORONTO -> TORONTO si TORONTO absent
-    joined = " ".join(cleaned).upper()
-    if "ORONTO" in joined and "TORONTO" not in joined:
-        cleaned = [("TORONTO" if w.upper() == "ORONTO" else w) for w in cleaned]
+    # retire bruit
+    stop = {"vintage", "card", "cards", "hockey", "nhl", "ier", "1er", "the", "and", "for"}
+    cleaned = []
+    for w in words:
+        if len(w) < 3:
+            continue
+        if w in stop:
+            continue
+        cleaned.append(w)
+
+    # ORONTO -> TORONTO (OCR)
+    joined = " ".join(cleaned)
+    if "oronto" in joined and "toronto" not in joined:
+        cleaned = [("toronto" if w == "oronto" else w) for w in cleaned]
 
     # unique en gardant l'ordre
     seen = set()
     unique = []
     for w in cleaned:
-        wl = w.lower()
-        if wl in seen:
+        if w in seen:
             continue
-        seen.add(wl)
+        seen.add(w)
         unique.append(w)
 
-    return " ".join(unique[:max_words]).strip()
+    # Si on détecte une équipe, on la garde
+    team_found = ""
+    joined_u = " ".join(unique)
+    for t in TEAM_KEYWORDS:
+        if t in joined_u:
+            team_found = t
+            break
+
+    # Si on voit "hutson", on force "lane hutson" (aide l'OCR)
+    if "hutson" in unique and "lane" not in unique:
+        unique = ["lane"] + unique
+
+    # Assure que l'équipe est incluse si trouvée
+    if team_found and team_found not in " ".join(unique):
+        unique.append(team_found)
+
+    out = " ".join(unique[:max_words]).strip()
+    return out.upper()
 
 
 def build_suggested_query_clean(ocr_text: str) -> tuple[str, dict]:
