@@ -25,6 +25,9 @@ OCR_SPACE_API_KEY = os.getenv("OCR_SPACE_API_KEY", "helloworld")
 _FX_CACHE = {"rate": None, "ts": 0}
 _FX_TTL_SECONDS = 60 * 60  # 1 heure
 
+# eBay category: Sports Trading Cards
+EBAY_CATEGORY_SPORTS_TRADING_CARDS = "212"
+
 def get_usd_cad_rate():
     now = time.time()
     if _FX_CACHE["rate"] and (now - _FX_CACHE["ts"] < _FX_TTL_SECONDS):
@@ -34,7 +37,6 @@ def get_usd_cad_rate():
     r = requests.get(url, timeout=15)
     r.raise_for_status()
     data = r.json()
-
     obs = data.get("observations", [])
     rate = float(obs[0]["FXUSDCAD"]["v"])
 
@@ -49,17 +51,11 @@ def get_ebay_token():
     url = "https://api.ebay.com/identity/v1/oauth2/token"
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
     data = {"grant_type": "client_credentials", "scope": "https://api.ebay.com/oauth/api_scope"}
-    r = requests.post(
-        url,
-        auth=(EBAY_CLIENT_ID, EBAY_CLIENT_SECRET),
-        headers=headers,
-        data=data,
-        timeout=20,
-    )
+    r = requests.post(url, auth=(EBAY_CLIENT_ID, EBAY_CLIENT_SECRET), headers=headers, data=data, timeout=20)
     r.raise_for_status()
     return r.json()["access_token"]
 
-def fetch_sold_items(query, token):
+def fetch_sold_items(query, token, category_id=EBAY_CATEGORY_SPORTS_TRADING_CARDS):
     url = "https://api.ebay.com/buy/browse/v1/item_summary/search"
     headers = {
         "Authorization": f"Bearer {token}",
@@ -67,63 +63,76 @@ def fetch_sold_items(query, token):
         "X-EBAY-C-MARKETPLACE-ID": "EBAY_CA",
     }
 
-    # IMPORTANT:
-    # Browse API retourne souvent FIXED_PRICE par défaut, donc on ajoute AUCTION aussi. :contentReference[oaicite:1]{index=1}
     params = {
         "q": query,
         "limit": 50,
+        "category_ids": category_id,  # aide énormément pour les cartes
         "filter": "soldItemsOnly:true,buyingOptions:{FIXED_PRICE|AUCTION}",
     }
-
     r = requests.get(url, headers=headers, params=params, timeout=25)
     r.raise_for_status()
     return r.json().get("itemSummaries", [])
 
+def simplify_query(q: str, max_words: int = 6) -> str:
+    """
+    Nettoie une requête OCR:
+    - enlève caractères bizarres
+    - enlève mots trop courts
+    - enlève doublons
+    - limite à max_words
+    """
+    q = (q or "").strip()
+    q = q.replace(" OR ", " ").replace("|", " ")
+    q = re.sub(r"[^A-Za-z0-9 \-#]", " ", q)
+    q = re.sub(r"\s+", " ", q).strip()
+
+    parts = q.split(" ")
+    cleaned = []
+    for w in parts:
+        w2 = w.strip()
+        if len(w2) < 3:
+            continue
+        # retire des mots ultra génériques qui nuisent souvent
+        if w2.lower() in {"vintage", "card", "cards", "hockey", "nhl"}:
+            continue
+        cleaned.append(w2)
+
+    # unique en gardant l'ordre
+    seen = set()
+    unique = []
+    for w in cleaned:
+        wl = w.lower()
+        if wl in seen:
+            continue
+        seen.add(wl)
+        unique.append(w)
+
+    return " ".join(unique[:max_words]).strip()
+
 def build_suggested_query(ocr_text: str) -> str:
+    """
+    V2 (beaucoup plus clean):
+    - détecte PSA/BGS/SGC + grade si présent
+    - prend une requête simplifiée (6 mots)
+    """
     t = (ocr_text or "").strip()
     t = re.sub(r"\s+", " ", t)
-
-    keywords = [
-        "upper deck", "opc", "o-pee-chee", "young guns", "mvp", "spx", "spa",
-        "psa", "bgs", "sgc", "rookie", "rc", "autograph", "auto", "canvas"
-    ]
-
-    low = t.lower()
-    picked = [k for k in keywords if k in low]
-
-    m = re.search(r"\b(19|20)\d{2}\b", t)
-    year = m.group(0) if m else ""
 
     grade = ""
     mg = re.search(r"\b(PSA|BGS|SGC)\s*([0-9]{1,2}(\.[0-9])?)\b", t, re.IGNORECASE)
     if mg:
         grade = f"{mg.group(1).upper()} {mg.group(2)}"
 
-    base = t[:120]
+    base = simplify_query(t, max_words=6)
+    if grade and grade.lower() not in base.lower():
+        base = (base + " " + grade).strip()
 
-    parts = []
-    if year:
-        parts.append(year)
-    parts.append(base)
-    if grade:
-        parts.append(grade)
-    if picked:
-        parts.append(" ".join(dict.fromkeys(picked)))
-
-    q = " ".join(parts)
-    q = re.sub(r"[^A-Za-z0-9 \-\.#]", " ", q)
-    q = re.sub(r"\s+", " ", q).strip()
-    return q[:160] if q else ""
+    return base[:160] if base else ""
 
 def ocr_space_extract_text(image_bytes: bytes, filename: str) -> str:
     url = "https://api.ocr.space/parse/image"
     files = {"filename": (filename or "card.jpg", image_bytes)}
-    data = {
-        "apikey": OCR_SPACE_API_KEY,
-        "language": "eng",
-        "isOverlayRequired": "false",
-        "OCREngine": "2"
-    }
+    data = {"apikey": OCR_SPACE_API_KEY, "language": "eng", "isOverlayRequired": "false", "OCREngine": "2"}
     r = requests.post(url, files=files, data=data, timeout=60)
     r.raise_for_status()
     j = r.json()
@@ -148,14 +157,23 @@ async def photo_to_query(file: UploadFile = File(...)):
     return {
         "ocr_text": text,
         "suggested_query": suggested,
-        "note_fr": "Suggestion automatique. Tu peux modifier la recherche avant de lancer le prix.",
-        "note_en": "Auto-suggestion. You can edit the search before pricing.",
+        "note_fr": "Suggestion auto (nettoyée). Tu peux ajuster avant de lancer le prix.",
+        "note_en": "Auto-suggestion (cleaned). You can tweak before pricing.",
     }
 
 @app.get("/search")
 def search(q: str):
     token = get_ebay_token()
+
+    # 1) essaie la requête telle quelle
     items = fetch_sold_items(q, token)
+
+    # 2) fallback si 0 (souvent OCR trop bruité)
+    q_simple = ""
+    if len(items) == 0:
+        q_simple = simplify_query(q, max_words=6)
+        if q_simple and q_simple.lower() != (q or "").lower():
+            items = fetch_sold_items(q_simple, token)
 
     excluded_titles = [
         "lot", "bundle", "job lot", "mixed lot",
@@ -205,16 +223,18 @@ def search(q: str):
     if len(prices_cad) < 3:
         return {
             "query": q,
+            "query_used": (q_simple or q),
             "error": "Not enough data",
-            "note_fr": "Pas assez de ventes trouvées (ou filtrées). Essaie une recherche plus précise.",
-            "note_en": "Not enough sales found (or filtered). Try a more specific query.",
+            "note_fr": "Pas assez de ventes trouvées. Essaie d'ajouter un mot clé (ex: marque, année, #).",
+            "note_en": "Not enough sales found. Try adding a keyword (set, year, card #, etc.).",
             "sales_used": len(prices_cad),
             "top_sales": [],
             "debug": {
                 "ebay_items_returned": len(items),
                 "after_filters": len(prices_cad),
                 "marketplace": "EBAY_CA",
-                "filter_used": "soldItemsOnly:true,buyingOptions:{FIXED_PRICE|AUCTION}"
+                "category_ids": EBAY_CATEGORY_SPORTS_TRADING_CARDS,
+                "q_fallback_used": bool(q_simple),
             }
         }
 
@@ -235,12 +255,13 @@ def search(q: str):
 
     return {
         "query": q,
+        "query_used": (q_simple or q),
         "currency": "CAD",
         "usd_to_cad": round(usd_to_cad, 6),
         "median_price_cad": round(statistics.median(used_prices_cad), 2),
         "average_price_cad": round((sum(used_prices_cad) / len(used_prices_cad)), 2),
         "sales_used": len(used_prices_cad),
-        "source": "eBay Browse API + Bank of Canada FX (CA marketplace)",
+        "source": "eBay Browse API + Bank of Canada FX (CA marketplace, category 212)",
         "top_sales": [
             {
                 "title": s["title"],
@@ -249,10 +270,4 @@ def search(q: str):
                 "url": s["url"],
             } for s in top5
         ],
-        "debug": {
-            "ebay_items_returned": len(items),
-            "after_filters": len(used_prices_cad),
-            "marketplace": "EBAY_CA",
-            "filter_used": "soldItemsOnly:true,buyingOptions:{FIXED_PRICE|AUCTION}"
-        }
     }
