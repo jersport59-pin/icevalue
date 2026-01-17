@@ -63,7 +63,8 @@ def fetch_sold_items(query, token):
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
-        "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
+        # IMPORTANT: marketplace Canada
+        "X-EBAY-C-MARKETPLACE-ID": "EBAY_CA",
     }
     params = {"q": query, "filter": "soldItemsOnly:true", "limit": 20}
     r = requests.get(url, headers=headers, params=params, timeout=20)
@@ -71,18 +72,13 @@ def fetch_sold_items(query, token):
     return r.json().get("itemSummaries", [])
 
 def build_suggested_query(ocr_text: str) -> str:
-    """
-    Heuristique simple pour V1:
-    - Nettoie le texte
-    - Garde mots utiles (joueur, marque, année, PSA/BGS/SGC, numéro, etc.)
-    - Construit une requête courte.
-    """
     t = (ocr_text or "").strip()
     t = re.sub(r"\s+", " ", t)
 
-    # mots clés souvent utiles sur cartes
-    keywords = ["upper deck", "opc", "o-pee-chee", "young guns", "mvp", "spx", "spa",
-                "psa", "bgs", "sgc", "rookie", "rc", "autograph", "auto", "canvas"]
+    keywords = [
+        "upper deck", "opc", "o-pee-chee", "young guns", "mvp", "spx", "spa",
+        "psa", "bgs", "sgc", "rookie", "rc", "autograph", "auto", "canvas"
+    ]
 
     low = t.lower()
 
@@ -91,31 +87,25 @@ def build_suggested_query(ocr_text: str) -> str:
         if k in low:
             picked.append(k)
 
-    # cherche une année 19xx ou 20xx
     m = re.search(r"\b(19|20)\d{2}\b", t)
     year = m.group(0) if m else ""
 
-    # cherche un grade PSA/BGS/SGC + chiffre (ex: PSA 10)
     grade = ""
     mg = re.search(r"\b(PSA|BGS|SGC)\s*([0-9]{1,2}(\.[0-9])?)\b", t, re.IGNORECASE)
     if mg:
         grade = f"{mg.group(1).upper()} {mg.group(2)}"
 
-    # garde seulement une partie du texte pour éviter des requêtes trop longues
     base = t[:120]
 
     parts = []
     if year:
         parts.append(year)
-    # base (souvent joueur + marque)
     parts.append(base)
-
     if grade:
         parts.append(grade)
     if picked:
-        parts.append(" ".join(dict.fromkeys(picked)))  # unique
+        parts.append(" ".join(dict.fromkeys(picked)))
 
-    # nettoie final
     q = " ".join(parts)
     q = re.sub(r"[^A-Za-z0-9 \-\.#]", " ", q)
     q = re.sub(r"\s+", " ", q).strip()
@@ -126,7 +116,7 @@ def ocr_space_extract_text(image_bytes: bytes, filename: str) -> str:
     files = {"filename": (filename or "card.jpg", image_bytes)}
     data = {
         "apikey": OCR_SPACE_API_KEY,
-        "language": "eng",          # cartes souvent EN; on peut changer plus tard
+        "language": "eng",
         "isOverlayRequired": "false",
         "OCREngine": "2"
     }
@@ -170,8 +160,10 @@ def search(q: str):
         "set", "complete set", "team set"
     ]
 
+    usd_to_cad = get_usd_cad_rate()
+
     sales = []
-    prices_usd = []
+    prices_cad = []
 
     for item in items:
         title_text = item.get("title") or ""
@@ -184,7 +176,8 @@ def search(q: str):
         val = p.get("value")
         cur = p.get("currency")
 
-        if not val or (cur not in ("USD", None)):
+        # Accepte USD et CAD
+        if not val or (cur not in ("USD", "CAD", None)):
             continue
 
         try:
@@ -195,49 +188,63 @@ def search(q: str):
         if price <= 5 or price >= 50000:
             continue
 
+        # Convertir en CAD si USD
+        if cur == "USD" or cur is None:
+            price_usd = price
+            price_cad = price * usd_to_cad
+        else:
+            price_usd = None
+            price_cad = price
+
         url = item.get("itemWebUrl") or item.get("itemHref") or ""
 
-        sales.append({"title": title_text, "price_usd": price, "url": url})
-        prices_usd.append(price)
+        sales.append({
+            "title": title_text,
+            "price_cad": price_cad,
+            "price_usd": price_usd,
+            "url": url
+        })
+        prices_cad.append(price_cad)
 
-    if len(prices_usd) < 3:
+    if len(prices_cad) < 3:
         return {
             "query": q,
             "error": "Not enough data",
-            "note_fr": "Pas assez de ventes récentes (ou elles ont été filtrées).",
-            "note_en": "Not enough recent sales (or they were filtered out).",
-            "sales_used": len(prices_usd),
+            "note_fr": "Pas assez de ventes récentes (ou elles ont été filtrées / devise). Essaie une recherche plus précise.",
+            "note_en": "Not enough recent sales (or filtered out / currency). Try a more specific query.",
+            "sales_used": len(prices_cad),
             "top_sales": []
         }
 
-    prices_usd.sort()
-    used_prices = prices_usd[1:-1] if len(prices_usd) > 6 else prices_usd[:]
+    prices_cad.sort()
+    used_prices_cad = prices_cad[1:-1] if len(prices_cad) > 6 else prices_cad[:]
 
-    remaining = used_prices.copy()
+    remaining = used_prices_cad.copy()
     filtered_sales = []
     for s in sales:
-        if s["price_usd"] in remaining:
-            filtered_sales.append(s)
-            remaining.remove(s["price_usd"])
+        # match par valeur CAD (tolérance)
+        for rp in remaining:
+            if abs(s["price_cad"] - rp) < 0.0001:
+                filtered_sales.append(s)
+                remaining.remove(rp)
+                break
 
-    filtered_sales.sort(key=lambda x: x["price_usd"], reverse=True)
+    filtered_sales.sort(key=lambda x: x["price_cad"], reverse=True)
     top5 = filtered_sales[:5]
-
-    usd_to_cad = get_usd_cad_rate()
 
     return {
         "query": q,
         "currency": "CAD",
         "usd_to_cad": round(usd_to_cad, 6),
-        "median_price_cad": round(statistics.median(used_prices) * usd_to_cad, 2),
-        "average_price_cad": round((sum(used_prices) / len(used_prices)) * usd_to_cad, 2),
-        "sales_used": len(used_prices),
-        "source": "eBay sold listings + Bank of Canada FX",
+        "median_price_cad": round(statistics.median(used_prices_cad), 2),
+        "average_price_cad": round((sum(used_prices_cad) / len(used_prices_cad)), 2),
+        "sales_used": len(used_prices_cad),
+        "source": "eBay sold listings (CA) + Bank of Canada FX",
         "top_sales": [
             {
                 "title": s["title"],
-                "price_cad": round(s["price_usd"] * usd_to_cad, 2),
-                "price_usd": round(s["price_usd"], 2),
+                "price_cad": round(s["price_cad"], 2),
+                "price_usd": (round(s["price_usd"], 2) if isinstance(s["price_usd"], (int, float)) else None),
                 "url": s["url"],
             } for s in top5
         ],
