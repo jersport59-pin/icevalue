@@ -96,17 +96,33 @@ def search(q: str):
     items = fetch_sold_items(q, token)
 
     prices_usd = []
-    for item in items:
-        p = item.get("price", {})
-        val = p.get("value")
-        cur = p.get("currency")
-        # On garde seulement ce qui est numérique; si eBay renvoie autre devise,
-        # on l'ignore pour l’instant (on améliorera ensuite).
-        if val and (cur == "USD" or cur is None):
-            try:
-                prices_usd.append(float(val))
-            except:
-                pass
+excluded_titles = ["lot", "bundle", "x2", "x3", "x4", "cards", "set"]
+
+for item in items:
+    title = item.get("title", "").lower()
+
+    # Exclure les lots / bundles
+    if any(word in title for word in excluded_titles):
+        continue
+
+    p = item.get("price", {})
+    val = p.get("value")
+    cur = p.get("currency")
+
+    if val and (cur == "USD" or cur is None):
+        try:
+            price = float(val)
+
+            # Filtrer prix aberrants
+            if price <= 5:
+                continue
+            if price >= 50000:
+                continue
+
+            prices_usd.append(price)
+        except:
+            pass
+
 
     if len(prices_usd) < 3:
         return {
@@ -115,6 +131,10 @@ def search(q: str):
             "note_fr": "Pas assez de ventes récentes (ou devise non USD). Essaie une recherche plus précise.",
             "note_en": "Not enough recent sales (or non-USD currency). Try a more specific query.",
         }
+# Nettoyage des valeurs extrêmes
+prices_usd.sort()
+if len(prices_usd) > 6:
+    prices_usd = prices_usd[1:-1]  # enlève le plus bas et le plus haut
 
     usd_to_cad = get_usd_cad_rate()
     median_usd = statistics.median(prices_usd)
