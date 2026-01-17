@@ -18,9 +18,9 @@ app.add_middleware(
 
 EBAY_CLIENT_ID = os.getenv("EBAY_CLIENT_ID")
 EBAY_CLIENT_SECRET = os.getenv("EBAY_CLIENT_SECRET")
-
 OCR_SPACE_API_KEY = os.getenv("OCR_SPACE_API_KEY", "helloworld")
 
+# ---- FX cache (USD -> CAD) ----
 _FX_CACHE = {"rate": None, "ts": 0}
 _FX_TTL_SECONDS = 60 * 60  # 1 heure
 
@@ -74,6 +74,14 @@ def fetch_sold_items(query, token, marketplace_id="EBAY_CA", category_id=None):
     return r.json().get("itemSummaries", [])
 
 def simplify_query(q: str, max_words: int = 7) -> str:
+    """
+    Nettoyage OCR -> requête eBay simple et robuste:
+    - enlève caractères bizarres
+    - enlève mots trop courts / bruit
+    - remplace ORONTO->TORONTO (cas fréquent)
+    - enlève doublons
+    - limite à max_words
+    """
     q = (q or "").strip()
     q = q.replace(" OR ", " ").replace("|", " ")
     q = re.sub(r"[^A-Za-z0-9 \-#]", " ", q)
@@ -88,15 +96,13 @@ def simplify_query(q: str, max_words: int = 7) -> str:
         wl = w2.lower()
         if wl in {"vintage", "card", "cards", "hockey", "nhl"}:
             continue
-        # bruit OCR fréquent
-        if wl in {"ier", "1er", "lerr", "l er"}:
+        if wl in {"ier", "1er", "lerr", "l", "le"}:
             continue
         cleaned.append(w2)
 
-    # correction très simple (cas fréquent TORONTO)
-    # ORONTO -> TORONTO si TORONTO n'est pas déjà présent
-    joined = " ".join(cleaned)
-    if "ORONTO" in joined.upper() and "TORONTO" not in joined.upper():
+    # ORONTO -> TORONTO si TORONTO absent
+    joined = " ".join(cleaned).upper()
+    if "ORONTO" in joined and "TORONTO" not in joined:
         cleaned = [("TORONTO" if w.upper() == "ORONTO" else w) for w in cleaned]
 
     # unique en gardant l'ordre
@@ -111,20 +117,43 @@ def simplify_query(q: str, max_words: int = 7) -> str:
 
     return " ".join(unique[:max_words]).strip()
 
-def build_suggested_query(ocr_text: str) -> str:
-    t = (ocr_text or "").strip()
-    t = re.sub(r"\s+", " ", t)
+def extract_grade(text: str) -> str:
+    mg = re.search(r"\b(PSA|BGS|SGC)\s*([0-9]{1,2}(\.[0-9])?)\b", text or "", re.IGNORECASE)
+    if not mg:
+        return ""
+    return f"{mg.group(1).upper()} {mg.group(2)}"
 
-    grade = ""
-    mg = re.search(r"\b(PSA|BGS|SGC)\s*([0-9]{1,2}(\.[0-9])?)\b", t, re.IGNORECASE)
-    if mg:
-        grade = f"{mg.group(1).upper()} {mg.group(2)}"
-
+def build_suggested_query_clean(ocr_text: str) -> str:
+    """
+    Suggestion PROPRE (celle qui marche le plus souvent):
+    - simplifie + garde 6-7 mots max
+    - ajoute PSA/BGS/SGC grade si présent
+    """
+    t = re.sub(r"\s+", " ", (ocr_text or "").strip())
+    grade = extract_grade(t)
     base = simplify_query(t, max_words=7)
     if grade and grade.lower() not in base.lower():
         base = (base + " " + grade).strip()
-
     return base[:160] if base else ""
+
+def build_suggested_query_full(ocr_text: str) -> str:
+    """
+    Suggestion FULL (plus proche OCR):
+    - garde plus de mots (jusqu'à 140 chars)
+    - ajoute grade si présent
+    """
+    t = re.sub(r"\s+", " ", (ocr_text or "").strip())
+    grade = extract_grade(t)
+
+    # garde plus long, mais nettoie un peu
+    t2 = re.sub(r"[^A-Za-z0-9 \-#]", " ", t)
+    t2 = re.sub(r"\s+", " ", t2).strip()
+
+    full = t2[:140].strip()
+    if grade and grade.lower() not in full.lower():
+        full = (full + " " + grade).strip()
+
+    return full[:160] if full else ""
 
 def ocr_space_extract_text(image_bytes: bytes, filename: str) -> str:
     url = "https://api.ocr.space/parse/image"
@@ -149,13 +178,18 @@ async def photo_to_query(file: UploadFile = File(...)):
         return {"error": "Empty file"}
 
     text = ocr_space_extract_text(content, file.filename or "card.jpg")
-    suggested = build_suggested_query(text)
 
+    clean = build_suggested_query_clean(text)
+    full = build_suggested_query_full(text)
+
+    # compat: suggested_query = clean
     return {
         "ocr_text": text,
-        "suggested_query": suggested,
-        "note_fr": "Suggestion auto (nettoyée). Corrige au besoin (ex: TORONTO) avant de chercher.",
-        "note_en": "Auto-suggestion (cleaned). Edit if needed (ex: TORONTO) before searching.",
+        "suggested_query": clean,
+        "suggested_query_clean": clean,
+        "suggested_query_full": full,
+        "note_fr": "Deux suggestions: PROPRE (recommandée) et OCR (brute).",
+        "note_en": "Two suggestions: CLEAN (recommended) and OCR (raw).",
     }
 
 @app.get("/search")
@@ -163,28 +197,28 @@ def search(q: str):
     token = get_ebay_token()
     usd_to_cad = get_usd_cad_rate()
 
-    # 1) requête brute (CA + catégorie)
+    # 1) CA + catégorie 212
     items = fetch_sold_items(q, token, marketplace_id="EBAY_CA", category_id=EBAY_CATEGORY_SPORTS_TRADING_CARDS)
     query_used = q
-    tried = [{"marketplace":"EBAY_CA","category":"212","q":q,"items":len(items)}]
+    tried = [{"marketplace": "EBAY_CA", "category": "212", "q": q, "items": len(items)}]
 
     # 2) fallback: simplifier q
     if len(items) == 0:
         q_simple = simplify_query(q, max_words=7)
-        if q_simple and q_simple.lower() != q.lower():
+        if q_simple and q_simple.lower() != (q or "").lower():
             items = fetch_sold_items(q_simple, token, marketplace_id="EBAY_CA", category_id=EBAY_CATEGORY_SPORTS_TRADING_CARDS)
             query_used = q_simple
-            tried.append({"marketplace":"EBAY_CA","category":"212","q":q_simple,"items":len(items)})
+            tried.append({"marketplace": "EBAY_CA", "category": "212", "q": q_simple, "items": len(items)})
 
     # 3) fallback: enlever catégorie
     if len(items) == 0:
         items = fetch_sold_items(query_used, token, marketplace_id="EBAY_CA", category_id=None)
-        tried.append({"marketplace":"EBAY_CA","category":None,"q":query_used,"items":len(items)})
+        tried.append({"marketplace": "EBAY_CA", "category": None, "q": query_used, "items": len(items)})
 
-    # 4) fallback: marketplace US (souvent plus de sold)
+    # 4) fallback: marketplace US
     if len(items) == 0:
         items = fetch_sold_items(query_used, token, marketplace_id="EBAY_US", category_id=None)
-        tried.append({"marketplace":"EBAY_US","category":None,"q":query_used,"items":len(items)})
+        tried.append({"marketplace": "EBAY_US", "category": None, "q": query_used, "items": len(items)})
 
     excluded_titles = [
         "lot", "bundle", "job lot", "mixed lot",
@@ -233,15 +267,11 @@ def search(q: str):
             "query": q,
             "query_used": query_used,
             "error": "Not enough data",
-            "note_fr": "0 résultat eBay API: la requête OCR est trop bruitée. Corrige le texte (ex: Joseph Woll Toronto Maple Leafs) puis relance.",
-            "note_en": "0 eBay API results: OCR query is too noisy. Edit text (ex: Joseph Woll Toronto Maple Leafs) then retry.",
+            "note_fr": "Pas assez de ventes trouvées. Essaie d'ajouter un mot clé (marque, année, #, PSA/BGS/SGC).",
+            "note_en": "Not enough sales found. Try adding a keyword (set, year, card #, PSA/BGS/SGC).",
             "sales_used": len(prices_cad),
             "top_sales": [],
-            "debug": {
-                "ebay_items_returned": len(items),
-                "after_filters": len(prices_cad),
-                "tried": tried
-            }
+            "debug": {"tried": tried, "ebay_items_returned": len(items), "after_filters": len(prices_cad)},
         }
 
     prices_cad.sort()
@@ -276,7 +306,5 @@ def search(q: str):
                 "url": s["url"],
             } for s in top5
         ],
-        "debug": {
-            "tried": tried
-        }
+        "debug": {"tried": tried},
     }
