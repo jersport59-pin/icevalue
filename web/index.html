@@ -190,7 +190,9 @@
     async function analyzePhoto(){
       const input = document.getElementById("photo");
       const file = input.files && input.files[0];
+
       if(!file){
+        alert("Choisis une photo / Choose a photo");
         setStatus("Choisis une photo / Choose a photo");
         return;
       }
@@ -203,32 +205,44 @@
 
       try{
         const res = await fetch(API_BASE + "/photo", { method: "POST", body: form });
+
+        if(!res.ok){
+          const text = await res.text();
+          alert("Erreur OCR HTTP " + res.status);
+          setStatus("❌ OCR HTTP " + res.status + " : " + text);
+          return;
+        }
+
         const data = await res.json();
 
+        // Montre toujours quelque chose (anti-silence)
+        showCard();
+        document.getElementById("qtitle").innerText="OCR Result";
+        document.getElementById("median").innerText="—";
+        document.getElementById("avg").innerText="—";
+        document.getElementById("sales").innerText=(data.note_fr||"") + (data.note_en ? (" / " + data.note_en) : "");
+        document.getElementById("fx").innerText="";
+        document.getElementById("source").innerText="OCR done ✅";
+        document.getElementById("raw").style.display="block";
+        document.getElementById("raw").innerText=JSON.stringify(data,null,2);
+        renderTop5([]);
+
         if(data.error){
+          alert("OCR error: " + data.error);
           setStatus("❌ OCR error: " + data.error);
           return;
         }
 
-        // Mets la suggestion dans la barre de recherche
-if(data.suggested_query){
-  document.getElementById("q").value = data.suggested_query;
-  setStatus("✅ Texte détecté. Corrige au besoin (ex: TORONTO), puis clique Rechercher.");
-  // IMPORTANT: on ne lance plus automatiquement searchCard()
-}
+        if(data.suggested_query){
+          document.getElementById("q").value = data.suggested_query;
+          setStatus("✅ OCR OK. Corrige la recherche au besoin puis clique Rechercher.");
+          alert("OCR OK ✅\nSuggestion mise dans la barre de recherche.");
         } else {
           setStatus("⚠️ Texte difficile à lire. Essaie une photo plus nette (lumière, pas de reflet).");
-          showCard();
-          document.getElementById("qtitle").innerText="OCR résultat";
-          document.getElementById("median").innerText="—";
-          document.getElementById("avg").innerText="—";
-          document.getElementById("sales").innerText="";
-          document.getElementById("fx").innerText="";
-          document.getElementById("source").innerText="";
-          document.getElementById("raw").innerText=JSON.stringify(data,null,2);
-          renderTop5([]);
+          alert("OCR: aucun texte lisible");
         }
       } catch(err){
+        alert("Erreur OCR: " + (err?.message||"connexion impossible"));
         setStatus("❌ Erreur OCR: " + (err?.message||"connexion impossible"));
       }
     }
