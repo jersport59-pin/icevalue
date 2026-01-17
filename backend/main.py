@@ -146,10 +146,6 @@ def extract_keywords(text: str, keywords: list[str]) -> list[str]:
     picked = []
 
     # --- Détection robuste "Young Guns" ---
-    # Match:
-    # - "young guns" / "youngguns"
-    # - "y0ung guns" (OCR 0 vs o)
-    # - "yg" / "y g" / "y-g"
     if (
         "young guns" in low
         or "youngguns" in low
@@ -426,6 +422,39 @@ def search(q: str):
         url = item.get("itemWebUrl") or item.get("itemHref") or ""
         sales.append({"title": title_text, "price_cad": price_cad, "price_usd": price_usd, "url": url})
         prices_cad.append(price_cad)
+
+    # ------------------------------------------------------
+    # FILTRE "CARTE EXACTE" (Young Guns / # numéro) si possible
+    # ------------------------------------------------------
+    q_upper = (q or "").upper()
+    keep_sales = sales
+
+    # 1) Filtre Young Guns
+    if "YOUNG GUNS" in q_upper or " YG" in q_upper or "YG " in q_upper or q_upper.strip() == "YG":
+        yg_filtered = []
+        for s in sales:
+            t = (s.get("title") or "").upper()
+            if "YOUNG GUNS" in t or "🔫YOUNG GUNS🔫" in t or " YG " in t or t.endswith(" YG") or t.startswith("YG "):
+                yg_filtered.append(s)
+        if len(yg_filtered) >= 3:
+            keep_sales = yg_filtered
+
+    # 2) Filtre # numéro (ex: #229)
+    match_num = re.search(r"#\s*([0-9]{1,4})", q_upper)
+    if match_num:
+        num = match_num.group(1)
+        num_filtered = []
+        for s in keep_sales:
+            t = (s.get("title") or "").upper()
+            if f"#{num}" in t:
+                num_filtered.append(s)
+        if len(num_filtered) >= 3:
+            keep_sales = num_filtered
+
+    # 3) Applique si filtré
+    if keep_sales is not sales:
+        sales = keep_sales
+        prices_cad = [s["price_cad"] for s in sales]
 
     if len(prices_cad) < 3:
         return {
